@@ -9,7 +9,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.tilelink._
-/*
+
 class CustomXbar(
   arbitrationPolicy: TLArbiter.Policy = TLArbiter.roundRobin,
   maxFlightPerId:    Int = 7,
@@ -61,7 +61,7 @@ class CustomXbar(
     // To route W we need to record where the AWs went
     val awIn  = Seq.fill(io_in .size) { Module(new Queue(UInt(width = io_out.size), awQueueDepth, flow = true)) }
     val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in .size), awQueueDepth, flow = true)) }
-
+    /*
     val requestARIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.ar.bits.addr) }) }
     val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.aw.bits.addr) }) }
     val requestROI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.r.bits.id) } }
@@ -204,7 +204,7 @@ class CustomXbar(
     for (i <- 0 until in.size) {
       CustomArbiter(arbitrationPolicy)(in(i).r, portsRIO(i):_*)
       CustomArbiter(arbitrationPolicy)(in(i).b, portsBIO(i):_*)
-    }
+    }*/
   }
 }
 
@@ -222,6 +222,7 @@ object CustomXbar
   def mapInputIds(ports: Seq[CustomMasterPortParameters]) = TLXbar.assignRanges(ports.map(_.endId))
 
   // Replicate an input port to each output port
+  /*
   def fanout[T <: CustomBundleBase](input: IrrevocableIO[T], select: Seq[Bool]) = {
     val filtered = Wire(Vec(select.size, input))
     for (i <- 0 until select.size) {
@@ -230,9 +231,9 @@ object CustomXbar
     }
     input.ready := Mux1H(select, filtered.map(_.ready))
     filtered
-  }
+  }*/
 }
-
+/*
 object CustomArbiter
 {
   def apply[T <: Data](policy: TLArbiter.Policy)(sink: IrrevocableIO[T], sources: IrrevocableIO[T]*): Unit = {
