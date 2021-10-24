@@ -233,7 +233,7 @@ object CustomXbar
     filtered
   }*/
 }
-/*
+
 object CustomArbiter
 {
   def apply[T <: Data](policy: TLArbiter.Policy)(sink: IrrevocableIO[T], sources: IrrevocableIO[T]*): Unit = {
@@ -288,7 +288,7 @@ object CustomArbiter
     muxState
   }
 }
-
+/*
 class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(implicit p: Parameters) extends LazyModule
 {
   val xbar = CustomXbar()
