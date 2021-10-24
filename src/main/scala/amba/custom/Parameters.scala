@@ -1,311 +1,224 @@
 // See LICENSE.SiFive for license details.
+
 package freechips.rocketchip.amba.custom
 
-import chisel3.util._
+import Chisel._
 import chisel3.internal.sourceinfo.SourceInfo
 import freechips.rocketchip.config.Parameters
-import freechips.rocketchip.util._
 import freechips.rocketchip.diplomacy._
+import freechips.rocketchip.util._
+import scala.math.max
 
-class CustomSlaveParameters private (
-  val name:          String,
-  val supportsSizes: TransferSizes,
-  val destinationId: Int,
-  val resources:     Seq[Resource],
-  val nodePath:      Seq[BaseNode])
+case class CustomSlaveParameters(
+  address:       Seq[AddressSet],
+  resources:     Seq[Resource] = Nil,
+  regionType:    RegionType.T  = RegionType.GET_EFFECTS,
+  executable:    Boolean       = false, // processor can execute from this memory
+  nodePath:      Seq[BaseNode] = Seq(),
+  supportsWrite: TransferSizes = TransferSizes.none,
+  supportsRead:  TransferSizes = TransferSizes.none,
+  interleavedId: Option[Int]   = None,
+  device: Option[Device] = None) // The device will not interleave responses (R+B)
 {
-  require (!supportsSizes.none)
-  require (destinationId >= 0)
+  address.foreach { a => require (a.finite) }
+  address.combinations(2).foreach { case Seq(x,y) => require (!x.overlaps(y), s"$x and $y overlap") }
 
-  def v1copy(
-      name:          String        = name,
-      supportsSizes: TransferSizes = supportsSizes,
-      destinationId: Int           = destinationId,
-      resources:     Seq[Resource] = resources,
-      nodePath:      Seq[BaseNode] = nodePath) =
-  {
-    new CustomSlaveParameters(
-      name         = name,
-      supportsSizes = supportsSizes,
-      destinationId = destinationId,
-      resources     = resources,
-      nodePath      = nodePath)
+  val name = nodePath.lastOption.map(_.lazyModule.name).getOrElse("disconnected")
+  val maxTransfer = max(supportsWrite.max, supportsRead.max)
+  val maxAddress = address.map(_.max).max
+  val minAlignment = address.map(_.alignment).min
+
+  // The device had better not support a transfer larger than its alignment
+  require (minAlignment >= maxTransfer,
+    s"minAlignment ($minAlignment) must be >= maxTransfer ($maxTransfer)")
+
+  def toResource: ResourceAddress = {
+    ResourceAddress(address, ResourcePermissions(
+      r = supportsRead,
+      w = supportsWrite,
+      x = executable,
+      c = false,
+      a = false))
   }
 }
 
-object CustomSlaveParameters {
-  def v1(
-      name:          String,
-      supportsSizes: TransferSizes,
-      destinationId: Int           = 0,
-      resources:     Seq[Resource] = Nil,
-      nodePath:      Seq[BaseNode] = Nil) =
-  {
-    new CustomSlaveParameters(
-      name         = name,
-      supportsSizes = supportsSizes,
-      destinationId = destinationId,
-      resources     = resources,
-      nodePath      = nodePath)
-  }
-}
-
-class CustomSlavePortParameters private (
-  val slaves:        Seq[CustomSlaveParameters],
-  val reqAligned:    Boolean, /* 'Position byte's are unsupported */
-  val reqContinuous: Boolean, /* 'Null byte's inside transfers unsupported */
-  val beatBytes:     Option[Int])
+case class CustomSlavePortParameters(
+  slaves:     Seq[CustomSlaveParameters],
+  beatBytes:  Int,
+  minLatency: Int = 1,
+  responseFields: Seq[BundleFieldBase] = Nil,
+  requestKeys:    Seq[BundleKeyBase]   = Nil)
 {
   require (!slaves.isEmpty)
-  beatBytes.foreach { b => require(isPow2(b)) }
+  require (isPow2(beatBytes))
 
-  val endDestinationId = slaves.map(_.destinationId).max + 1
-  val supportsMinCover = TransferSizes.mincover(slaves.map(_.supportsSizes))
+  val maxTransfer = slaves.map(_.maxTransfer).max
+  val maxAddress = slaves.map(_.maxAddress).max
 
-  def v1copy(
-    slaves:        Seq[CustomSlaveParameters] = slaves,
-    reqAligned:    Boolean                  = reqAligned,
-    reqContinuous: Boolean                  = reqContinuous,
-    beatBytes:     Option[Int]              = beatBytes) =
-  {
-    new CustomSlavePortParameters(
-      slaves        = slaves,
-      reqAligned    = reqAligned,
-      reqContinuous = reqContinuous,
-      beatBytes     = beatBytes)
+  // Check the link is not pointlessly wide
+  require (maxTransfer >= beatBytes,
+    s"maxTransfer ($maxTransfer) should not be smaller than bus width ($beatBytes)")
+  // Check that the link can be implemented in Custom
+  val limit = beatBytes * (1 << CustomParameters.lenBits)
+  require (maxTransfer <= limit,
+    s"maxTransfer ($maxTransfer) cannot be larger than $limit on a $beatBytes*8 width bus")
+
+  // Require disjoint ranges for addresses
+  slaves.combinations(2).foreach { case Seq(x,y) =>
+    x.address.foreach { a => y.address.foreach { b =>
+      require (!a.overlaps(b), s"$a and $b overlap")
+    } }
   }
 }
 
-object CustomSlavePortParameters {
-  def v1(
-    slaves:        Seq[CustomSlaveParameters],
-    reqAligned:    Boolean     = false,
-    reqContinuous: Boolean     = false,
-    beatBytes:     Option[Int] = None) =
-  {
-    new CustomSlavePortParameters(
-      slaves        = slaves,
-      reqAligned    = reqAligned,
-      reqContinuous = reqContinuous,
-      beatBytes     = beatBytes)
-  }
-}
-
-class CustomMasterParameters private (
-  val name:       String,
-  val emitsSizes: TransferSizes,
-  val sourceId:   IdRange,
-  val resources:  Seq[Resource],
-  val nodePath:   Seq[BaseNode])
+case class CustomMasterParameters(
+  name:      String,
+  id:        IdRange       = IdRange(0, 1),
+  aligned:   Boolean       = false,
+  maxFlight: Option[Int]   = None, // None = infinite, else is a per-ID cap
+  nodePath:  Seq[BaseNode] = Seq())
 {
-  require (!emitsSizes.none)
-  require (!sourceId.isEmpty)
-
-  def v1copy(
-    name:       String        = name,
-    emitsSizes: TransferSizes = emitsSizes,
-    sourceId:   IdRange       = sourceId,
-    resources:  Seq[Resource] = resources,
-    nodePath:   Seq[BaseNode] = nodePath) =
-  {
-    new CustomMasterParameters(
-      name       = name,
-      emitsSizes = emitsSizes,
-      sourceId   = sourceId,
-      resources  = resources,
-      nodePath   = nodePath)
-  }
+  maxFlight.foreach { m => require (m >= 0) }
 }
 
-object CustomMasterParameters {
-  def v1(
-    name:       String,
-    emitsSizes: TransferSizes,
-    sourceId:   IdRange       = IdRange(0,1),
-    resources:  Seq[Resource] = Nil,
-    nodePath:   Seq[BaseNode] = Nil) =
-  {
-    new CustomMasterParameters(
-      name       = name,
-      emitsSizes = emitsSizes,
-      sourceId   = sourceId,
-      resources  = resources,
-      nodePath   = nodePath)
-  }
-}
-
-class CustomMasterPortParameters private (
-  val masters:      Seq[CustomMasterParameters],
-  val userFields:   Seq[BundleFieldBase],
-  val isAligned:    Boolean, /* there are no 'Position byte's in transfers */
-  val isContinuous: Boolean, /* there are no 'Null byte's except at the end of a transfer */
-  val beatBytes:    Option[Int])
+case class CustomMasterPortParameters(
+  masters:    Seq[CustomMasterParameters],
+  echoFields:    Seq[BundleFieldBase] = Nil,
+  requestFields: Seq[BundleFieldBase] = Nil,
+  responseKeys:  Seq[BundleKeyBase]   = Nil)
 {
-  require (!masters.isEmpty)
-  beatBytes.foreach { b => require(isPow2(b)) }
+  val endId = masters.map(_.id.end).max
 
-  val endSourceId = masters.map(_.sourceId.end).max
-  val emitsMinCover = TransferSizes.mincover(masters.map(_.emitsSizes))
-
-  def v1copy(
-    masters:      Seq[CustomMasterParameters] = masters,
-    userFields:   Seq[BundleFieldBase]      = userFields,
-    isAligned:    Boolean                   = isAligned,
-    isContinuous: Boolean                   = isContinuous,
-    beatBytes:    Option[Int]               = beatBytes) =
-  {
-    new CustomMasterPortParameters(
-      masters      = masters,
-      userFields   = userFields,
-      isAligned    = isAligned,
-      isContinuous = isContinuous,
-      beatBytes    = beatBytes)
+  // Require disjoint ranges for ids
+  IdRange.overlaps(masters.map(_.id)).foreach { case (x, y) =>
+    require (!x.overlaps(y), s"CustomMasterParameters.id $x and $y overlap")
   }
 }
 
-object CustomMasterPortParameters {
-  def v1(
-    masters:      Seq[CustomMasterParameters],
-    userFields:   Seq[BundleFieldBase] = Nil,
-    isAligned:    Boolean              = false,
-    isContinuous: Boolean              = false,
-    beatBytes:    Option[Int]          = None) =
-  {
-    new CustomMasterPortParameters(
-      masters      = masters,
-      userFields   = userFields,
-      isAligned    = isAligned,
-      isContinuous = isContinuous,
-      beatBytes    = beatBytes)
-  }
-}
-
-class CustomBundleParameters private (
-  val idBits:      Int,
-  val destBits:    Int,
-  val dataBits:    Int,
-  val userFields:  Seq[BundleFieldBase],
-  val oneBeat:     Boolean,
-  val aligned:     Boolean)
+case class CustomBundleParameters(
+  addrBits: Int,
+  dataBits: Int,
+  idBits:   Int,
+  echoFields:     Seq[BundleFieldBase] = Nil,
+  requestFields:  Seq[BundleFieldBase] = Nil,
+  responseFields: Seq[BundleFieldBase] = Nil)
 {
-  require (idBits >= 0)
-  require (destBits >= 0)
-  require (dataBits >= 8)
-  require (isPow2(dataBits))
+  require (dataBits >= 8, s"Custom data bits must be >= 8 (got $dataBits)")
+  require (addrBits >= 1, s"Custom addr bits must be >= 1 (got $addrBits)")
+  require (idBits >= 1, s"Custom id bits must be >= 1 (got $idBits)")
+  require (isPow2(dataBits), s"Custom data bits must be pow2 (got $dataBits)")
+  echoFields.foreach { f => require (f.key.isControl, s"${f} is not a legal echo field") }
 
-  val keepBits = dataBits/8
-  val strbBits = dataBits/8
+  // Bring the globals into scope
+  val lenBits   = CustomParameters.lenBits
+  val sizeBits  = CustomParameters.sizeBits
+  val burstBits = CustomParameters.burstBits
+  val lockBits  = CustomParameters.lockBits
+  val cacheBits = CustomParameters.cacheBits
+  val protBits  = CustomParameters.protBits
+  val qosBits   = CustomParameters.qosBits
+  val respBits  = CustomParameters.respBits
 
-  def hasLast = !oneBeat
-  def hasId   = idBits > 0
-  def hasDest = destBits > 0
-  def hasKeep = true
-  def hasStrb = !aligned
-  def hasData = true
-
-  def union(x: CustomBundleParameters) = new CustomBundleParameters(
-    idBits      = idBits   max x.idBits,
-    destBits    = destBits max x.destBits,
-    dataBits    = dataBits max x.dataBits,
-    userFields  = BundleField.union(userFields ++ x.userFields),
-    oneBeat     = oneBeat && x.oneBeat,
-    aligned     = aligned && x.aligned)
-
-  def v1copy(
-    idBits:      Int = idBits,
-    destBits:    Int = destBits,
-    dataBits:    Int = dataBits,
-    userFields:  Seq[BundleFieldBase] = userFields,
-    oneBeat:     Boolean = oneBeat,
-    aligned:     Boolean = aligned) =
-  {
-    new CustomBundleParameters(
-      idBits     = idBits,
-      destBits   = destBits,
-      dataBits   = dataBits,
-      userFields = userFields,
-      oneBeat    = oneBeat,
-      aligned    = aligned)
-  }
+  def union(x: CustomBundleParameters) =
+    CustomBundleParameters(
+      max(addrBits,   x.addrBits),
+      max(dataBits,   x.dataBits),
+      max(idBits,     x.idBits),
+      BundleField.union(echoFields ++ x.echoFields),
+      BundleField.union(requestFields ++ x.requestFields),
+      BundleField.union(responseFields ++ x.responseFields))
 }
 
-object CustomBundleParameters {
-  val emptyBundleParams = new CustomBundleParameters(
-    idBits      = 0,
-    destBits    = 0,
-    dataBits    = 8,
-    userFields  = Nil,
-    oneBeat     = true,
-    aligned     = true)
+object CustomBundleParameters
+{
+  val emptyBundleParams = CustomBundleParameters(addrBits=1, dataBits=8, idBits=1, echoFields=Nil, requestFields=Nil, responseFields=Nil)
   def union(x: Seq[CustomBundleParameters]) = x.foldLeft(emptyBundleParams)((x,y) => x.union(y))
 
-  def v1(
-    idBits:      Int,
-    destBits:    Int,
-    dataBits:    Int,
-    userFields:  Seq[BundleFieldBase],
-    oneBeat:     Boolean,
-    aligned:     Boolean) =
-  {
+  def apply(master: CustomMasterPortParameters, slave: CustomSlavePortParameters) =
     new CustomBundleParameters(
-      idBits     = idBits,
-      destBits   = destBits,
-      dataBits   = dataBits,
-      userFields = userFields,
-      oneBeat    = oneBeat,
-      aligned    = aligned)
-  }
+      addrBits = log2Up(slave.maxAddress+1),
+      dataBits = slave.beatBytes * 8,
+      idBits   = log2Up(master.endId),
+      echoFields     = master.echoFields,
+      requestFields  = BundleField.accept(master.requestFields, slave.requestKeys),
+      responseFields = BundleField.accept(slave.responseFields, master.responseKeys))
 }
 
-class CustomEdgeParameters private (
-  val master:     CustomMasterPortParameters,
-  val slave:      CustomSlavePortParameters,
-  val params:     Parameters,
-  val sourceInfo: SourceInfo)
+case class CustomEdgeParameters(
+  master: CustomMasterPortParameters,
+  slave:  CustomSlavePortParameters,
+  params: Parameters,
+  sourceInfo: SourceInfo)
 {
-  require (!slave.beatBytes.isEmpty || !master.beatBytes.isEmpty,
-    s"Neither master nor slave port specify a bus width (insert an CustomBusBinder between them?) at ${sourceInfo}")
-  require (slave.beatBytes.isEmpty || master.beatBytes.isEmpty || slave.beatBytes == master.beatBytes,
-    s"Master and slave ports specify incompatible bus widths (insert an CustomWidthWidget between them?) at ${sourceInfo}")
-  require (!slave.reqAligned || master.isAligned, s"Slave port requires aligned stream data at ${sourceInfo}")
-  require (!slave.reqContinuous || master.isContinuous, s"Slave port requires continuous stream data at ${sourceInfo}")
+  val bundle = CustomBundleParameters(master, slave)
+}
 
-  val beatBytes = slave.beatBytes.getOrElse(master.beatBytes.get)
-  val transferSizes = master.emitsMinCover intersect slave.supportsMinCover
+case class CustomAsyncSlavePortParameters(async: AsyncQueueParams, base: CustomSlavePortParameters)
+case class CustomAsyncMasterPortParameters(base: CustomMasterPortParameters)
 
-  val bundle = CustomBundleParameters.v1(
-    idBits      = log2Ceil(master.endSourceId),
-    destBits    = log2Ceil(slave.endDestinationId),
-    dataBits    = beatBytes * 8,
-    userFields  = master.userFields,
-    oneBeat     = transferSizes.max <= beatBytes,
-    aligned     = master.isAligned)
+case class CustomAsyncBundleParameters(async: AsyncQueueParams, base: CustomBundleParameters)
+case class CustomAsyncEdgeParameters(master: CustomAsyncMasterPortParameters, slave: CustomAsyncSlavePortParameters, params: Parameters, sourceInfo: SourceInfo)
+{
+  val bundle = CustomAsyncBundleParameters(slave.async, CustomBundleParameters(master.base, slave.base))
+}
 
-  def v1copy(
-    master:     CustomMasterPortParameters = master,
-    slave:      CustomSlavePortParameters  = slave,
-    params:     Parameters               = params,
-    sourceInfo: SourceInfo               = sourceInfo) =
-  {
-    new CustomEdgeParameters(
-      master     = master,
-      slave      = slave,
-      params     = params,
-      sourceInfo = sourceInfo)
+case class CustomBufferParams(
+  aw: BufferParams = BufferParams.none,
+  w:  BufferParams = BufferParams.none,
+  b:  BufferParams = BufferParams.none,
+  ar: BufferParams = BufferParams.none,
+  r:  BufferParams = BufferParams.none
+) extends DirectedBuffers[CustomBufferParams] {
+  def copyIn(x: BufferParams) = this.copy(b = x, r = x)
+  def copyOut(x: BufferParams) = this.copy(aw = x, ar = x, w = x)
+  def copyInOut(x: BufferParams) = this.copyIn(x).copyOut(x)
+}
+
+case class CustomCreditedDelay(
+  aw: CreditedDelay,
+  w:  CreditedDelay,
+  b:  CreditedDelay,
+  ar: CreditedDelay,
+  r:  CreditedDelay)
+{
+  def + (that: CustomCreditedDelay): CustomCreditedDelay = CustomCreditedDelay(
+    aw = aw + that.aw,
+    w  = w  + that.w,
+    b  = b  + that.b,
+    ar = ar + that.ar,
+    r  = r  + that.r)
+
+  override def toString = s"(${aw}, ${w}, ${b}, ${ar}, ${r})"
+}
+
+object CustomCreditedDelay {
+  def apply(delay: CreditedDelay): CustomCreditedDelay = apply(delay, delay, delay.flip, delay, delay.flip)
+}
+
+case class CustomCreditedSlavePortParameters(delay: CustomCreditedDelay, base: CustomSlavePortParameters)
+case class CustomCreditedMasterPortParameters(delay: CustomCreditedDelay, base: CustomMasterPortParameters)
+case class CustomCreditedEdgeParameters(master: CustomCreditedMasterPortParameters, slave: CustomCreditedSlavePortParameters, params: Parameters, sourceInfo: SourceInfo)
+{
+  val delay = master.delay + slave.delay
+  val bundle = CustomBundleParameters(master.base, slave.base)
+}
+
+/** Pretty printing of Custom source id maps */
+class CustomIdMap(axi4: CustomMasterPortParameters) extends IdMap[CustomIdMapEntry] {
+  private val axi4Digits = String.valueOf(axi4.endId-1).length()
+  protected val fmt = s"\t[%${axi4Digits}d, %${axi4Digits}d) %s%s%s"
+  private val sorted = axi4.masters.sortBy(_.id)
+
+  val mapping: Seq[CustomIdMapEntry] = sorted.map { case c =>
+    // to conservatively state max number of transactions, assume every id has up to c.maxFlight and reuses ids between AW and AR channels
+    val maxTransactionsInFlight = c.maxFlight.map(_ * c.id.size * 2)
+    CustomIdMapEntry(c.id, c.name, maxTransactionsInFlight)
   }
 }
 
-object CustomEdgeParameters {
-  def v1(
-    master:     CustomMasterPortParameters,
-    slave:      CustomSlavePortParameters,
-    params:     Parameters,
-    sourceInfo: SourceInfo) =
-  {
-    new CustomEdgeParameters(
-      master     = master,
-      slave      = slave,
-      params     = params,
-      sourceInfo = sourceInfo)
-  }
+case class CustomIdMapEntry(axi4Id: IdRange, name: String, maxTransactionsInFlight: Option[Int] = None) extends IdMapEntry {
+  val from = axi4Id
+  val to = axi4Id
+  val isCache = false
+  val requestFifo = false
 }
