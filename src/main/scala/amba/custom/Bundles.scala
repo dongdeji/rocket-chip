@@ -7,8 +7,9 @@ import chisel3.DontCare
 import chisel3.util.Irrevocable
 import freechips.rocketchip.util._
 
+abstract class CustomBundleBase(params: CustomBundleParameters) extends GenericParameterizedBundle(params)
 
-class CustomBundleA(val params: CustomBundleParameters) extends Bundle
+class CustomBundleA(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
   val id     = UInt(width = params.idBits)
   val addr   = UInt(width = params.addrBits)
@@ -21,7 +22,7 @@ class CustomBundleA(val params: CustomBundleParameters) extends Bundle
   val qos    = UInt(width = params.qosBits)  // 0=no QoS, bigger = higher priority
 }
 
-class CustomBundleB(val params: CustomBundleParameters) extends Bundle
+class CustomBundleB(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
   val id   = UInt(width = params.idBits)
   val resp = UInt(width = params.respBits)
@@ -29,7 +30,7 @@ class CustomBundleB(val params: CustomBundleParameters) extends Bundle
   val echo = BundleMap(params.echoFields)
 }
 
-class CustomBundle(val params: CustomBundleParameters) extends Bundle
+class CustomBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
   val a  = Irrevocable(new CustomBundleA (params))
   val b  = Irrevocable(new CustomBundleB (params)).flip
