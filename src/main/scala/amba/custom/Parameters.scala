@@ -59,9 +59,9 @@ case class CustomSlavePortParameters(
   require (maxTransfer >= beatBytes,
     s"maxTransfer ($maxTransfer) should not be smaller than bus width ($beatBytes)")
   // Check that the link can be implemented in Custom
-  val limit = beatBytes * (1 << CustomParameters.lenBits)
-  require (maxTransfer <= limit,
-    s"maxTransfer ($maxTransfer) cannot be larger than $limit on a $beatBytes*8 width bus")
+  //by dongdeji val limit = beatBytes * (1 << CustomParameters.lenBits)
+  //by dongdeji require (maxTransfer <= limit,
+  //by dongdeji   s"maxTransfer ($maxTransfer) cannot be larger than $limit on a $beatBytes*8 width bus")
 
   // Require disjoint ranges for addresses
   slaves.combinations(2).foreach { case Seq(x,y) =>
@@ -110,13 +110,6 @@ case class CustomBundleParameters(
   echoFields.foreach { f => require (f.key.isControl, s"${f} is not a legal echo field") }
 
   // Bring the globals into scope
-  val lenBits   = CustomParameters.lenBits
-  val sizeBits  = CustomParameters.sizeBits
-  val burstBits = CustomParameters.burstBits
-  val lockBits  = CustomParameters.lockBits
-  val cacheBits = CustomParameters.cacheBits
-  val protBits  = CustomParameters.protBits
-  val qosBits   = CustomParameters.qosBits
   val respBits  = CustomParameters.respBits
 
   def union(x: CustomBundleParameters) =

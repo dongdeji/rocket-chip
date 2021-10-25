@@ -139,9 +139,9 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       //by dongdeji val r_source  = r_state.source
       //by dongdeji val r_size    = r_state.size
 
-      val b_state = out.b.bits.echo(CustomTLState)
-      val b_source  = b_state.source
-      val b_size    = b_state.size
+      //by dongdeji val b_state = out.b.bits.echo(CustomTLState)
+      //by dongdeji val b_source  = b_state.source
+      //by dongdeji val b_size    = b_state.size
 
       // We need these Queues because Custom queues are irrevocable
       val depth = if (combinational) 1 else 2
@@ -168,12 +168,12 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       arw.id    := sourceTable(a_source)
       arw.addr  := a_address
       //by dongdeji arw.len   := UIntToOH1(a_size, CustomParameters.lenBits + log2Ceil(beatBytes)) >> log2Ceil(beatBytes)
-      arw.size  := Mux(a_size >= maxSize, maxSize, a_size)
-      arw.burst := CustomParameters.BURST_INCR
-      arw.lock  := UInt(0) // not exclusive (LR/SC unsupported b/c no forward progress guarantee)
-      arw.cache := UInt(0) // do not allow AXI to modify our transactions
-      arw.prot  := CustomParameters.PROT_PRIVILEDGED
-      arw.qos   := UInt(0) // no QoS
+      //by dongdeji arw.size  := Mux(a_size >= maxSize, maxSize, a_size)
+      //by dongdeji arw.burst := CustomParameters.BURST_INCR
+      //by dongdeji arw.lock  := UInt(0) // not exclusive (LR/SC unsupported b/c no forward progress guarantee)
+      //by dongdeji arw.cache := UInt(0) // do not allow AXI to modify our transactions
+      //by dongdeji arw.prot  := CustomParameters.PROT_PRIVILEDGED
+      //by dongdeji arw.qos   := UInt(0) // no QoS
       //by dongdeji arw.user :<= in.a.bits.user
       //by dongdeji arw.echo :<= in.a.bits.echo
       //by dongdeji val a_extra = arw.echo(CustomTLState)
@@ -190,8 +190,8 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
         cache(1) := x.modifiable
         cache(2) := x.readalloc
         cache(3) := x.writealloc
-        arw.prot  := Cat(prot.reverse)
-        arw.cache := Cat(cache.reverse)
+        //by dongdeji arw.prot  := Cat(prot.reverse)
+        //by dongdeji arw.cache := Cat(cache.reverse)
       }
 
       val stall = sourceStall(in.a.bits.source) && a_first
@@ -227,17 +227,17 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       //by dongdeji when (out.r.fire()) { r_first := out.r.bits.last }
       //by dongdeji val r_denied  = out.r.bits.resp === CustomParameters.RESP_DECERR holdUnless r_first
       //by dongdeji val r_corrupt = out.r.bits.resp =/= CustomParameters.RESP_OKAY
-      val b_denied  = out.b.bits.resp =/= CustomParameters.RESP_OKAY
+      //by dongdeji val b_denied  = out.b.bits.resp =/= CustomParameters.RESP_OKAY
 
       //by dongdeji val r_d = edgeIn.AccessAck(r_source, r_size, UInt(0), denied = r_denied, corrupt = r_corrupt || r_denied)
-      val b_d = edgeIn.AccessAck(b_source, b_size, denied = b_denied)
+      //by dongdeji val b_d = edgeIn.AccessAck(b_source, b_size, denied = b_denied)
       //by dongdeji r_d.user :<= out.r.bits.user
       //by dongdeji r_d.echo :<= out.r.bits.echo
-      b_d.user :<= out.b.bits.user
-      b_d.echo :<= out.b.bits.echo
+      //by dongdeji b_d.user :<= out.b.bits.user
+      //by dongdeji b_d.echo :<= out.b.bits.echo
 
       //by dongdeji in.d.bits := Mux(r_wins, r_d, b_d)
-      in.d.bits := b_d
+      //by dongdeji in.d.bits := b_d
       in.d.bits.data := out.b.bits.resp // avoid a costly Mux
 
       // We need to track if any reads or writes are inflight for a given ID.

@@ -93,8 +93,8 @@ class CustomRAM(
     //by dongdeji in. w.ready := in.aw.valid && (in.b.ready || !w_full)
 
     in.b.bits.id   := w_id
-    in.b.bits.resp := Mux(w_sel1, CustomParameters.RESP_OKAY, CustomParameters.RESP_DECERR)
-    in.b.bits.echo :<= w_echo
+    in.b.bits.resp := 10.U//by dongdeji Mux(w_sel1, CustomParameters.RESP_OKAY, CustomParameters.RESP_DECERR)
+    //by dongdeji in.b.bits.echo :<= w_echo
 
     //by dongdeji val r_full = RegInit(Bool(false))
     //by dongdeji val r_id   = Reg(UInt())
