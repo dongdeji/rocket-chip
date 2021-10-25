@@ -38,7 +38,7 @@ class TLtoCustomIdMap(tlPort: TLMasterPortParameters) extends IdMap[TLToCustomId
     CustomMasterParameters(
       name      = tl.name,
       id        = IdRange(start, start+size),
-      aligned   = true,
+      //by dongdeji aligned   = true,
       maxFlight = Some(if (tl.requestFifo) tl.sourceId.size else 1),
       nodePath  = tl.nodePath)
   }
@@ -64,18 +64,13 @@ case class TLToCustomIdMapEntry(customId: IdRange, tlId: IdRange, name: String, 
 case class TLToCustomNode(wcorrupt: Boolean = true)(implicit valName: ValName) extends MixedAdapterNode(TLImp, CustomImp)(
   dFn = { p =>
     CustomMasterPortParameters(
-      masters    = (new TLtoCustomIdMap(p)).customMasters,
-      requestFields = (if (wcorrupt) Seq(AMBACorruptField()) else Seq()) ++ p.requestFields.filter(!_.isInstanceOf[AMBAProtField]),
-      echoFields    = CustomTLStateField(log2Ceil(p.endSourceId)) +: p.echoFields,
-      responseKeys  = p.responseKeys)
+      masters    = (new TLtoCustomIdMap(p)).customMasters)
   },
   uFn = { p => TLSlavePortParameters.v1(
     managers = p.slaves.map { case s =>
       TLSlaveParameters.v1(
         address            = s.address,
         resources          = s.resources,
-        regionType         = s.regionType,
-        executable         = s.executable,
         nodePath           = s.nodePath,
         supportsGet        = s.supportsRead,
         supportsPutFull    = s.supportsWrite,
@@ -84,9 +79,7 @@ case class TLToCustomNode(wcorrupt: Boolean = true)(implicit valName: ValName) e
         mayDenyPut         = true,
         mayDenyGet         = true)},
       beatBytes = p.beatBytes,
-      minLatency = p.minLatency,
-      responseFields = p.responseFields,
-      requestKeys    = AMBAProt +: p.requestKeys)
+      minLatency = p.minLatency)
   })
 
 // wcorrupt alone is not enough; a slave must include AMBACorrupt in the slave port's requestKeys
@@ -100,8 +93,6 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       val slaves  = edgeOut.slave.slaves
 
       // All pairs of slaves must promise that they will never interleave data
-      require (slaves(0).interleavedId.isDefined)
-      slaves.foreach { s => require (s.interleavedId == slaves(0).interleavedId) }
 
       // Construct the source=>ID mapping table
       val map = new TLtoCustomIdMap(edgeIn.client)

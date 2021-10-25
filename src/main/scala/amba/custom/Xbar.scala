@@ -21,9 +21,6 @@ class CustomXbar(
   val node = new CustomNexusNode(
     masterFn  = { seq =>
       seq(0).copy(
-        echoFields    = BundleField.union(seq.flatMap(_.echoFields)),
-        requestFields = BundleField.union(seq.flatMap(_.requestFields)),
-        responseKeys  = seq.flatMap(_.responseKeys).distinct,
         masters = (CustomXbar.mapInputIds(seq) zip seq) flatMap { case (range, port) =>
           port.masters map { master => master.copy(id = master.id.shift(range.start)) }
         }
@@ -31,8 +28,6 @@ class CustomXbar(
     },
     slaveFn = { seq =>
       seq(0).copy(
-        responseFields = BundleField.union(seq.flatMap(_.responseFields)),
-        requestKeys    = seq.flatMap(_.requestKeys).distinct,
         minLatency = seq.map(_.minLatency).min,
         slaves = seq.flatMap { port =>
           require (port.beatBytes == seq(0).beatBytes,

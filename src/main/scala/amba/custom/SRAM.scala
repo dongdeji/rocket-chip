@@ -14,9 +14,9 @@ import freechips.rocketchip.amba._
 // You must also list AMBACorrupt in your master's requestFields
 class CustomRAM(
     address: AddressSet,
-    cacheable: Boolean = true,
+    //by dongdeji cacheable: Boolean = true,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
-    executable: Boolean = true,
+    //by dongdeji executable: Boolean = true,
     beatBytes: Int = 4,
     devName: Option[String] = None,
     errors: Seq[AddressSet] = Nil,
@@ -27,13 +27,13 @@ class CustomRAM(
     Seq(CustomSlaveParameters(
       address       = List(address) ++ errors,
       resources     = resources,
-      regionType    = if (cacheable) RegionType.UNCACHED else RegionType.IDEMPOTENT,
-      executable    = executable,
+      //by dongdeji regionType    = if (cacheable) RegionType.UNCACHED else RegionType.IDEMPOTENT,
+      //by dongdeji executable    = executable,
       supportsRead  = TransferSizes(1, beatBytes),
-      supportsWrite = TransferSizes(1, beatBytes),
-      interleavedId = Some(0))),
+      supportsWrite = TransferSizes(1, beatBytes)/*,
+      interleavedId = Some(0)*/)),
     beatBytes  = beatBytes,
-    requestKeys = if (wcorrupt) Seq(AMBACorrupt) else Seq(),
+    //by dongdeji requestKeys = if (wcorrupt) Seq(AMBACorrupt) else Seq(),
     minLatency = 1)))
 
   private val outer = this
@@ -69,7 +69,7 @@ class CustomRAM(
 
     val w_full = RegInit(Bool(false))
     val w_id   = Reg(UInt())
-    val w_echo = Reg(BundleMap(in.params.echoFields))
+    //by dongdeji val w_echo = Reg(BundleMap(in.params.echoFields))
     //by dongdeji val r_sel1 = Reg(r_sel0)
     val w_sel1 = Reg(w_sel0)
 
@@ -128,9 +128,7 @@ object CustomRAM
 {
   def apply(
     address: AddressSet,
-    cacheable: Boolean = true,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
-    executable: Boolean = true,
     beatBytes: Int = 4,
     devName: Option[String] = None,
     errors: Seq[AddressSet] = Nil,
@@ -139,8 +137,6 @@ object CustomRAM
   {
     val customram = LazyModule(new CustomRAM(
       address = address,
-      cacheable = cacheable,
-      executable = executable,
       beatBytes = beatBytes,
       devName = devName,
       errors = errors,

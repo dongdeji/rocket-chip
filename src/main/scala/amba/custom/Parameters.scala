@@ -12,12 +12,9 @@ import scala.math.max
 case class CustomSlaveParameters(
   address:       Seq[AddressSet],
   resources:     Seq[Resource] = Nil,
-  regionType:    RegionType.T  = RegionType.GET_EFFECTS,
-  executable:    Boolean       = false, // processor can execute from this memory
   nodePath:      Seq[BaseNode] = Seq(),
   supportsWrite: TransferSizes = TransferSizes.none,
   supportsRead:  TransferSizes = TransferSizes.none,
-  interleavedId: Option[Int]   = None,
   device: Option[Device] = None) // The device will not interleave responses (R+B)
 {
   address.foreach { a => require (a.finite) }
@@ -32,22 +29,20 @@ case class CustomSlaveParameters(
   require (minAlignment >= maxTransfer,
     s"minAlignment ($minAlignment) must be >= maxTransfer ($maxTransfer)")
 
-  def toResource: ResourceAddress = {
-    ResourceAddress(address, ResourcePermissions(
-      r = supportsRead,
-      w = supportsWrite,
-      x = executable,
-      c = false,
-      a = false))
-  }
+  //by dongdeji def toResource: ResourceAddress = {
+  //by dongdeji   ResourceAddress(address, ResourcePermissions(
+  //by dongdeji     r = supportsRead,
+  //by dongdeji     w = supportsWrite,
+  //by dongdeji     x = executable,
+  //by dongdeji     c = false,
+  //by dongdeji     a = false))
+  //by dongdeji }
 }
 
 case class CustomSlavePortParameters(
   slaves:     Seq[CustomSlaveParameters],
   beatBytes:  Int,
-  minLatency: Int = 1,
-  responseFields: Seq[BundleFieldBase] = Nil,
-  requestKeys:    Seq[BundleKeyBase]   = Nil)
+  minLatency: Int = 1)
 {
   require (!slaves.isEmpty)
   require (isPow2(beatBytes))
@@ -59,9 +54,6 @@ case class CustomSlavePortParameters(
   require (maxTransfer >= beatBytes,
     s"maxTransfer ($maxTransfer) should not be smaller than bus width ($beatBytes)")
   // Check that the link can be implemented in Custom
-  //by dongdeji val limit = beatBytes * (1 << CustomParameters.lenBits)
-  //by dongdeji require (maxTransfer <= limit,
-  //by dongdeji   s"maxTransfer ($maxTransfer) cannot be larger than $limit on a $beatBytes*8 width bus")
 
   // Require disjoint ranges for addresses
   slaves.combinations(2).foreach { case Seq(x,y) =>
@@ -74,7 +66,6 @@ case class CustomSlavePortParameters(
 case class CustomMasterParameters(
   name:      String,
   id:        IdRange       = IdRange(0, 1),
-  aligned:   Boolean       = false,
   maxFlight: Option[Int]   = None, // None = infinite, else is a per-ID cap
   nodePath:  Seq[BaseNode] = Seq())
 {
@@ -82,10 +73,7 @@ case class CustomMasterParameters(
 }
 
 case class CustomMasterPortParameters(
-  masters:    Seq[CustomMasterParameters],
-  echoFields:    Seq[BundleFieldBase] = Nil,
-  requestFields: Seq[BundleFieldBase] = Nil,
-  responseKeys:  Seq[BundleKeyBase]   = Nil)
+  masters:    Seq[CustomMasterParameters])
 {
   val endId = masters.map(_.id.end).max
 
@@ -98,43 +86,34 @@ case class CustomMasterPortParameters(
 case class CustomBundleParameters(
   addrBits: Int,
   dataBits: Int,
-  idBits:   Int,
-  echoFields:     Seq[BundleFieldBase] = Nil,
-  requestFields:  Seq[BundleFieldBase] = Nil,
-  responseFields: Seq[BundleFieldBase] = Nil)
+  idBits:   Int)
 {
   require (dataBits >= 8, s"Custom data bits must be >= 8 (got $dataBits)")
   require (addrBits >= 1, s"Custom addr bits must be >= 1 (got $addrBits)")
   require (idBits >= 1, s"Custom id bits must be >= 1 (got $idBits)")
   require (isPow2(dataBits), s"Custom data bits must be pow2 (got $dataBits)")
-  echoFields.foreach { f => require (f.key.isControl, s"${f} is not a legal echo field") }
 
   // Bring the globals into scope
-  val respBits  = CustomParameters.respBits
+  val respBits = CustomParameters.respBits
+  val opcodeBits = CustomParameters.opcodeBits
 
   def union(x: CustomBundleParameters) =
     CustomBundleParameters(
       max(addrBits,   x.addrBits),
       max(dataBits,   x.dataBits),
-      max(idBits,     x.idBits),
-      BundleField.union(echoFields ++ x.echoFields),
-      BundleField.union(requestFields ++ x.requestFields),
-      BundleField.union(responseFields ++ x.responseFields))
+      max(idBits,     x.idBits))
 }
 
 object CustomBundleParameters
 {
-  val emptyBundleParams = CustomBundleParameters(addrBits=1, dataBits=8, idBits=1, echoFields=Nil, requestFields=Nil, responseFields=Nil)
+  val emptyBundleParams = CustomBundleParameters(addrBits=1, dataBits=8, idBits=1/*, echoFields=Nil, requestFields=Nil, responseFields=Nil*/)
   def union(x: Seq[CustomBundleParameters]) = x.foldLeft(emptyBundleParams)((x,y) => x.union(y))
 
   def apply(master: CustomMasterPortParameters, slave: CustomSlavePortParameters) =
     new CustomBundleParameters(
       addrBits = log2Up(slave.maxAddress+1),
       dataBits = slave.beatBytes * 8,
-      idBits   = log2Up(master.endId),
-      echoFields     = master.echoFields,
-      requestFields  = BundleField.accept(master.requestFields, slave.requestKeys),
-      responseFields = BundleField.accept(slave.responseFields, master.responseKeys))
+      idBits   = log2Up(master.endId))
 }
 
 case class CustomEdgeParameters(
