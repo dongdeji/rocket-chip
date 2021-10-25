@@ -167,7 +167,7 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       //by dongdeji arw.wen   := a_isPut
       arw.id    := sourceTable(a_source)
       arw.addr  := a_address
-      arw.len   := UIntToOH1(a_size, CustomParameters.lenBits + log2Ceil(beatBytes)) >> log2Ceil(beatBytes)
+      //by dongdeji arw.len   := UIntToOH1(a_size, CustomParameters.lenBits + log2Ceil(beatBytes)) >> log2Ceil(beatBytes)
       arw.size  := Mux(a_size >= maxSize, maxSize, a_size)
       arw.burst := CustomParameters.BURST_INCR
       arw.lock  := UInt(0) // not exclusive (LR/SC unsupported b/c no forward progress guarantee)
