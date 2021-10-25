@@ -287,7 +287,7 @@ object CustomArbiter
     muxState
   }
 }
-/*
+
 class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(implicit p: Parameters) extends LazyModule
 {
   val xbar = CustomXbar()
@@ -297,16 +297,16 @@ class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
 
   val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new CustomRAM(AddressSet(slaveSize * i, slaveSize-1))) }
   slaves.foreach { s => (s.node
-    := CustomFragmenter()
+    //:= CustomFragmenter()
     := CustomBuffer(BufferParams.flow)
     := CustomBuffer(BufferParams.flow)
-    := CustomDelayer(0.25)
+    //:= CustomDelayer(0.25)
     := xbar) }
 
   val masters = Seq.fill(nMasters) { LazyModule(new TLFuzzer(txns, 4, nOrdered = Some(1))) }
   masters.zipWithIndex.foreach { case (m, i) => (xbar
-    := CustomDelayer(0.25)
-    := CustomDeinterleaver(4096)
+    //:= CustomDelayer(0.25)
+    //:= CustomDeinterleaver(4096)
     := TLToCustom()
     := TLFilter(filter(i))
     := TLRAMModel(s"${name} Master $i")
@@ -323,5 +323,5 @@ class CustomXbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parame
   val dut22 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT22", txns, 2, 2)).module)
   io.finished := Seq(dut21, dut12, dut22).map(_.io.finished).reduce(_ || _)
 }
-*/
+
 

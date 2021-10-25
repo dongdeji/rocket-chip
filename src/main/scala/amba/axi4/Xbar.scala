@@ -318,8 +318,8 @@ class AXI4XbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(imp
 }
 
 class AXI4XbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
-  val dut21 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
-  val dut12 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
-  val dut22 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT22", txns, 2, 2)).module)
-  io.finished := Seq(dut21, dut12, dut22).map(_.io.finished).reduce(_ || _)
+  val dut21 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT21", txns, 4, 1)).module)
+  //val dut12 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
+  //val dut22 = Module(LazyModule(new AXI4XbarFuzzTest("Xbar DUT22", txns, 2, 2)).module)
+  io.finished := Seq(dut21/*, dut12, dut22*/).map(_.io.finished).reduce(_ || _)
 }

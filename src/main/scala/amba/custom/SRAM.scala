@@ -96,9 +96,9 @@ class CustomRAM(
     in.b.bits.resp := Mux(w_sel1, CustomParameters.RESP_OKAY, CustomParameters.RESP_DECERR)
     in.b.bits.echo :<= w_echo
 
-    val r_full = RegInit(Bool(false))
-    val r_id   = Reg(UInt())
-    val r_echo = Reg(BundleMap(in.params.echoFields))
+    //by dongdeji val r_full = RegInit(Bool(false))
+    //by dongdeji val r_id   = Reg(UInt())
+    //by dongdeji val r_echo = Reg(BundleMap(in.params.echoFields))
 
     //by dongdeji when (in. r.fire()) { r_full := Bool(false) }
     //by dongdeji when (in.ar.fire()) { r_full := Bool(true) }
