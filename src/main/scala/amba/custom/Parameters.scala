@@ -153,54 +153,13 @@ case class CustomEdgeParameters(
   val bundle = CustomBundleParameters(master, slave)
 }
 
-case class CustomAsyncSlavePortParameters(async: AsyncQueueParams, base: CustomSlavePortParameters)
-case class CustomAsyncMasterPortParameters(base: CustomMasterPortParameters)
-
-case class CustomAsyncBundleParameters(async: AsyncQueueParams, base: CustomBundleParameters)
-case class CustomAsyncEdgeParameters(master: CustomAsyncMasterPortParameters, slave: CustomAsyncSlavePortParameters, params: Parameters, sourceInfo: SourceInfo)
-{
-  val bundle = CustomAsyncBundleParameters(slave.async, CustomBundleParameters(master.base, slave.base))
-}
-
 case class CustomBufferParams(
-  aw: BufferParams = BufferParams.none,
-  w:  BufferParams = BufferParams.none,
-  b:  BufferParams = BufferParams.none,
-  ar: BufferParams = BufferParams.none,
-  r:  BufferParams = BufferParams.none
+  a: BufferParams = BufferParams.none,
+  b: BufferParams = BufferParams.none
 ) extends DirectedBuffers[CustomBufferParams] {
-  def copyIn(x: BufferParams) = this.copy(b = x, r = x)
-  def copyOut(x: BufferParams) = this.copy(aw = x, ar = x, w = x)
+  def copyIn(x: BufferParams) = this.copy(b = x )
+  def copyOut(x: BufferParams) = this.copy(a = x )
   def copyInOut(x: BufferParams) = this.copyIn(x).copyOut(x)
-}
-
-case class CustomCreditedDelay(
-  aw: CreditedDelay,
-  w:  CreditedDelay,
-  b:  CreditedDelay,
-  ar: CreditedDelay,
-  r:  CreditedDelay)
-{
-  def + (that: CustomCreditedDelay): CustomCreditedDelay = CustomCreditedDelay(
-    aw = aw + that.aw,
-    w  = w  + that.w,
-    b  = b  + that.b,
-    ar = ar + that.ar,
-    r  = r  + that.r)
-
-  override def toString = s"(${aw}, ${w}, ${b}, ${ar}, ${r})"
-}
-
-object CustomCreditedDelay {
-  def apply(delay: CreditedDelay): CustomCreditedDelay = apply(delay, delay, delay.flip, delay, delay.flip)
-}
-
-case class CustomCreditedSlavePortParameters(delay: CustomCreditedDelay, base: CustomSlavePortParameters)
-case class CustomCreditedMasterPortParameters(delay: CustomCreditedDelay, base: CustomMasterPortParameters)
-case class CustomCreditedEdgeParameters(master: CustomCreditedMasterPortParameters, slave: CustomCreditedSlavePortParameters, params: Parameters, sourceInfo: SourceInfo)
-{
-  val delay = master.delay + slave.delay
-  val bundle = CustomBundleParameters(master.base, slave.base)
 }
 
 /** Pretty printing of Custom source id maps */

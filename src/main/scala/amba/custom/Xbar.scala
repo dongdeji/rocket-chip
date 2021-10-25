@@ -61,10 +61,10 @@ class CustomXbar(
     // To route W we need to record where the AWs went
     val awIn  = Seq.fill(io_in .size) { Module(new Queue(UInt(width = io_out.size), awQueueDepth, flow = true)) }
     val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in .size), awQueueDepth, flow = true)) }
-    /*
-    val requestARIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.ar.bits.addr) }) }
-    val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.aw.bits.addr) }) }
-    val requestROI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.r.bits.id) } }
+
+    //val requestARIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.ar.bits.addr) }) }
+    val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.a.bits.addr) }) }
+    //val requestROI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.r.bits.id) } }
     val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.b.bits.id) } }
 
     // W follows the path dictated by the AW Q
@@ -83,9 +83,9 @@ class CustomXbar(
       def trim(id: UInt, size: Int) = if (size <= 1) UInt(0) else id(log2Ceil(size)-1, 0)
       // Manipulate the AXI IDs to differentiate masters
       val r = inputIdRanges(i)
-      in(i).aw.bits.id := io_in(i).aw.bits.id | UInt(r.start)
-      in(i).ar.bits.id := io_in(i).ar.bits.id | UInt(r.start)
-      io_in(i).r.bits.id := trim(in(i).r.bits.id, r.size)
+      in(i).a.bits.id := io_in(i).a.bits.id | UInt(r.start)
+      //in(i).ar.bits.id := io_in(i).ar.bits.id | UInt(r.start)
+      //io_in(i).r.bits.id := trim(in(i).r.bits.id, r.size)
       io_in(i).b.bits.id := trim(in(i).b.bits.id, r.size)
 
       if (io_out.size > 1) {
@@ -93,11 +93,11 @@ class CustomXbar(
         val endId = edgesIn(i).master.endId
         val arFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
         val awFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
-        val arSel = UIntToOH(io_in(i).ar.bits.id, endId)
-        val awSel = UIntToOH(io_in(i).aw.bits.id, endId)
-        val rSel  = UIntToOH(io_in(i).r .bits.id, endId)
+        //val arSel = UIntToOH(io_in(i).ar.bits.id, endId)
+        val awSel = UIntToOH(io_in(i).a.bits.id, endId)
+        //val rSel  = UIntToOH(io_in(i).r .bits.id, endId)
         val bSel  = UIntToOH(io_in(i).b .bits.id, endId)
-        val arTag = OHToUInt(requestARIO(i).asUInt, io_out.size)
+        //val arTag = OHToUInt(requestARIO(i).asUInt, io_out.size)
         val awTag = OHToUInt(requestAWIO(i).asUInt, io_out.size)
 
         for (master <- edgesIn(i).master.masters) {
@@ -121,40 +121,40 @@ class CustomXbar(
           }
 
           for (id <- master.id.start until master.id.end) {
-            arFIFOMap(id) := idTracker(
-              arTag,
-              arSel(id) && io_in(i).ar.fire(),
-              rSel(id) && io_in(i).r.fire() && io_in(i).r.bits.last)
+            //arFIFOMap(id) := idTracker(
+            //  arTag,
+            //  arSel(id) && io_in(i).ar.fire(),
+            //  rSel(id) && io_in(i).r.fire() && io_in(i).r.bits.last)
             awFIFOMap(id) := idTracker(
               awTag,
-              awSel(id) && io_in(i).aw.fire(),
+              awSel(id) && io_in(i).a.fire(),
               bSel(id) && io_in(i).b.fire())
           }
         }
 
-        val allowAR = arFIFOMap(io_in(i).ar.bits.id)
-        in(i).ar.valid := io_in(i).ar.valid && allowAR
-        io_in(i).ar.ready := in(i).ar.ready && allowAR
+        //val allowAR = arFIFOMap(io_in(i).ar.bits.id)
+        //in(i).ar.valid := io_in(i).ar.valid && allowAR
+        //io_in(i).ar.ready := in(i).ar.ready && allowAR
 
         // Keep in mind that slaves may do this: awready := wvalid, wready := awvalid
         // To not cause a loop, we cannot have: wvalid := awready
 
         // Block AW if we cannot record the W destination
-        val allowAW = awFIFOMap(io_in(i).aw.bits.id)
+        val allowAW = awFIFOMap(io_in(i).a.bits.id)
         val latched = RegInit(Bool(false)) // cut awIn(i).enq.valid from awready
-        in(i).aw.valid := io_in(i).aw.valid && (latched || awIn(i).io.enq.ready) && allowAW
-        io_in(i).aw.ready := in(i).aw.ready && (latched || awIn(i).io.enq.ready) && allowAW
-        awIn(i).io.enq.valid := io_in(i).aw.valid && !latched
+        in(i).a.valid := io_in(i).a.valid && (latched || awIn(i).io.enq.ready) && allowAW
+        io_in(i).a.ready := in(i).a.ready && (latched || awIn(i).io.enq.ready) && allowAW
+        awIn(i).io.enq.valid := io_in(i).a.valid && !latched
         when (awIn(i).io.enq.fire()) { latched := Bool(true) }
-        when (in(i).aw.fire()) { latched := Bool(false) }
+        when (in(i).a.fire()) { latched := Bool(false) }
 
         // Block W if we do not have an AW destination
-        in(i).w.valid := io_in(i).w.valid && awIn(i).io.deq.valid // depends on awvalid (but not awready)
-        io_in(i).w.ready := in(i).w.ready && awIn(i).io.deq.valid
-        awIn(i).io.deq.ready := io_in(i).w.valid && io_in(i).w.bits.last && in(i).w.ready
+        //in(i).w.valid := io_in(i).w.valid && awIn(i).io.deq.valid // depends on awvalid (but not awready)
+        //io_in(i).w.ready := in(i).w.ready && awIn(i).io.deq.valid
+        //awIn(i).io.deq.ready := io_in(i).w.valid && io_in(i).w.bits.last && in(i).w.ready
       }
     }
-
+/*
     // Transform output bundles
     val out = Wire(Vec(io_out.size, CustomBundle(wide_bundle)))
     for (i <- 0 until out.size) {
