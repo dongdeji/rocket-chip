@@ -285,6 +285,11 @@ object CustomArbiter
 
 class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(implicit p: Parameters) extends LazyModule
 {
+
+  ElaborationArtefacts.add("graphml", graphML)
+  //ElaborationArtefacts.add("dts", outer.dts)
+  //ElaborationArtefacts.add("json", outer.json)
+
   val xbar = CustomXbar()
   val slaveSize = 0x1000
   val masterBandSize = slaveSize >> log2Ceil(nMasters)
