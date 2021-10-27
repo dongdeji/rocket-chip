@@ -10,15 +10,20 @@ import scala.math.min
 
 
 class CustomBuffer(
-  a: BufferParams,
-  b: BufferParams)(implicit p: Parameters) extends LazyModule
+  enqreq: BufferParams,
+  enqrsp: BufferParams,
+  deqreq: BufferParams,
+  deqrsp: BufferParams)(implicit p: Parameters) extends LazyModule
 {
-  def this(x: BufferParams)(implicit p: Parameters) = this(x, x)
+  def this(enq: BufferParams, deq: BufferParams)(implicit p: Parameters) = this(enq, enq, deq, deq)
+  def this(x: BufferParams)(implicit p: Parameters) = this(x, x, x, x)
   def this()(implicit p: Parameters) = this(BufferParams.default)
 
   val node = CustomAdapterNode(
     masterFn = { p => p },
-    slaveFn  = { p => p.copy(minLatency = p.minLatency + a.latency + b.latency) })
+    slaveFn  = { p => p.copy(minLatency = p.minLatency + 
+                                            min(enqreq.latency, deqreq.latency) + 
+                                              min(enqrsp.latency, deqrsp.latency)) })
 
   lazy val module = new LazyModuleImp(this) {
     def buffer[T <: Data](config: BufferParams, data: IrrevocableIO[T]): IrrevocableIO[T] = {
@@ -30,8 +35,10 @@ class CustomBuffer(
     }
 
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
-      out.a <> buffer(a, in.a)
-      in .b <> buffer(b, out.b)
+      out.enqreq <> buffer(enqreq, in.enqreq)
+      in.enqrsp <> buffer(enqrsp, out.enqrsp)
+      out.deqreq <> buffer(deqreq, in.deqreq)
+      in.deqrsp <> buffer(deqrsp, out.deqrsp)
     }
   }
 }
@@ -40,9 +47,11 @@ object CustomBuffer
 {
   def apply()(implicit p: Parameters): CustomNode = apply(BufferParams.default)
   def apply(z: BufferParams)(implicit p: Parameters): CustomNode = apply(z, z)
-  def apply(a: BufferParams, b: BufferParams)(implicit p: Parameters): CustomNode =
+  def apply(enq: BufferParams, deq: BufferParams)(implicit p: Parameters): CustomNode = apply(enq, enq, deq, deq)
+  def apply(enqreq: BufferParams, enqrsp: BufferParams, deqreq: BufferParams, deqrsp: BufferParams)(implicit p: Parameters): CustomNode = 
   {
-    val custombuf = LazyModule(new CustomBuffer(a, b))
+    val custombuf = LazyModule(new CustomBuffer(enqreq, enqrsp, deqreq, deqrsp))
     custombuf.node
   }
 }
+

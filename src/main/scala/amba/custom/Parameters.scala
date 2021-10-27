@@ -29,14 +29,6 @@ case class CustomSlaveParameters(
   require (minAlignment >= maxTransfer,
     s"minAlignment ($minAlignment) must be >= maxTransfer ($maxTransfer)")
 
-  //by dongdeji def toResource: ResourceAddress = {
-  //by dongdeji   ResourceAddress(address, ResourcePermissions(
-  //by dongdeji     r = supportsRead,
-  //by dongdeji     w = supportsWrite,
-  //by dongdeji     x = executable,
-  //by dongdeji     c = false,
-  //by dongdeji     a = false))
-  //by dongdeji }
 }
 
 case class CustomSlavePortParameters(

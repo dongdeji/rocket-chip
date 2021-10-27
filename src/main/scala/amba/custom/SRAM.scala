@@ -14,10 +14,8 @@ import freechips.rocketchip.amba._
 // You must also list AMBACorrupt in your master's requestFields
 class CustomRAM(
     address: AddressSet,
-    //by dongdeji cacheable: Boolean = true,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
-    //by dongdeji executable: Boolean = true,
-    beatBytes: Int = 4,
+    beatBytes: Int = 8,
     devName: Option[String] = None,
     errors: Seq[AddressSet] = Nil,
     wcorrupt: Boolean = true)
@@ -27,13 +25,9 @@ class CustomRAM(
     Seq(CustomSlaveParameters(
       address       = List(address) ++ errors,
       resources     = resources,
-      //by dongdeji regionType    = if (cacheable) RegionType.UNCACHED else RegionType.IDEMPOTENT,
-      //by dongdeji executable    = executable,
       supportsRead  = TransferSizes(1, beatBytes),
-      supportsWrite = TransferSizes(1, beatBytes)/*,
-      interleavedId = Some(0)*/)),
+      supportsWrite = TransferSizes(1, beatBytes))),
     beatBytes  = beatBytes,
-    //by dongdeji requestKeys = if (wcorrupt) Seq(AMBACorrupt) else Seq(),
     minLatency = 1)))
 
   private val outer = this
@@ -42,85 +36,76 @@ class CustomRAM(
     val (in, edgeIn) = node.in(0)
     val laneDataBits = 8
     val (mem, omSRAM, omMem) = makeSinglePortedByteWriteSeqMem(
-      size = BigInt(1) << mask.filter(b=>b).size,
-      lanes = beatBytes,
-      bits = laneDataBits)
+                                  size = BigInt(CustomParameters.queue_depth),
+                                  lanes = beatBytes,
+                                  bits = laneDataBits)
     val eccCode = None
     val address = outer.address
 
-    //by dongdeji parentLogicalTreeNode.map {
-    //by dongdeji   case parentLTN =>
-    //by dongdeji     def sramLogicalTreeNode = new BusMemoryLogicalTreeNode(
-    //by dongdeji       device = device,
-    //by dongdeji       omSRAMs = Seq(omSRAM),
-    //by dongdeji       busProtocol = new AXI4_Lite(None),
-    //by dongdeji       dataECC = None,
-    //by dongdeji       hasAtomics = None,
-    //by dongdeji       busProtocolSpecification = None)
-    //by dongdeji     LogicalModuleTree.add(parentLTN, sramLogicalTreeNode)
-    //by dongdeji }
+    //val w_addr = Cat((mask zip (in.enqreq.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
+    //val deq_sel = address.contains(in.deqreq.bits.addr)
 
-    //by dongdeji val corrupt = if (edgeIn.bundle.requestFields.contains(AMBACorrupt)) Some(SeqMem(1 << mask.filter(b=>b).size, UInt(width=2))) else None
-
-    //by dongdeji val r_addr = Cat((mask zip (in.ar.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
-    val w_addr = Cat((mask zip (in.a.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
-    //by dongdeji val r_sel0 = address.contains(in.ar.bits.addr)
-    val w_sel0 = address.contains(in.a.bits.addr)
-
-    val w_full = RegInit(Bool(false))
-    val w_id   = Reg(UInt())
-    //by dongdeji val w_echo = Reg(BundleMap(in.params.echoFields))
-    //by dongdeji val r_sel1 = Reg(r_sel0)
-    val w_sel1 = Reg(w_sel0)
-
-    when (in.b.fire()) { w_full := Bool(false) }
-    when (in.a.fire()) { w_full := Bool(true) }
-
-    when (in.a.fire()) {
-      w_id := in.a.bits.id
-      w_sel1 := w_sel0
-      //by dongdeji w_echo :<= in.a.bits.echo
+    val head = RegInit(0.U(log2Up(CustomParameters.queue_depth*2).W))
+    val tail = RegInit(0.U(log2Up(CustomParameters.queue_depth*2).W))
+    /**** handle enq begin ****/
+    def isFull = (tail(log2Up(CustomParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(CustomParameters.queue_depth)-1,0))
+    val enq_sel = address.contains(in.enqreq.bits.addr)
+    val enqrsped = RegInit(true.B)
+    val enqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.enqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
+      
+    in.enqrsp.valid := enqreq_s1.valid
+    in.enqrsp.bits.id := enqreq_s1.bits.id
+    in.enqrsp.bits.addr := enqreq_s1.bits.addr
+    in.enqrsp.bits.data := 100.U//mem.readAndHold(tail, true.B)
+    when(in.enqrsp.fire()) {
+      enqrsped := true.B
+      enqreq_s1.valid := false.B
     }
 
-    //val wdata = Vec.tabulate(beatBytes) { i => in.w.bits.data(8*(i+1)-1, 8*i) }
-    when (in.a.fire() && w_sel0) {
-      //by dongdeji mem.write(w_addr, wdata, in.w.bits.strb.asBools)
-      //by dongdeji corrupt.foreach { _.write(w_addr, in.w.bits.user(AMBACorrupt).asUInt) }
+    when(!isFull && in.enqreq.valid && enq_sel && enqrsped ) {
+      enqrsped := false.B
+      enqreq_s1.valid := in.enqreq.valid
+      enqreq_s1.bits := in.enqreq.bits
     }
 
-    //by dongdeji in. b.valid := w_full
-    //by dongdeji in.a.ready := in. w.valid && (in.b.ready || !w_full)
-    //by dongdeji in. w.ready := in.aw.valid && (in.b.ready || !w_full)
+    in.enqreq.ready := !isFull && enqrsped
 
-    in.b.bits.id   := w_id
-    in.b.bits.resp := 10.U//by dongdeji Mux(w_sel1, CustomParameters.RESP_OKAY, CustomParameters.RESP_DECERR)
-    //by dongdeji in.b.bits.echo :<= w_echo
+    val wdata = Vec.tabulate(beatBytes) { i => in.enqreq.bits.data(8*(i+1)-1, 8*i) }
+    when (in.enqreq.fire() && enq_sel && !isFull && 
+            in.enqreq.bits.opcode === CustomParameters.OPCODE_ENQ) {
+      mem.write(head, wdata, Fill(beatBytes, true.B).asBools)
+      head := head + 1.U
+    }
+    /**** handle enq end ****/
 
-    //by dongdeji val r_full = RegInit(Bool(false))
-    //by dongdeji val r_id   = Reg(UInt())
-    //by dongdeji val r_echo = Reg(BundleMap(in.params.echoFields))
+    /**** handle deq begin ****/
+    def isEmpty = (tail(log2Up(CustomParameters.queue_depth)-1,0) === head(log2Up(CustomParameters.queue_depth)-1,0))
+    val deq_sel = address.contains(in.deqreq.bits.addr)
+    val deqrsped = RegInit(true.B)
+    val deqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.deqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
+    
+    in.deqrsp.valid := enqreq_s1.valid
+    in.deqrsp.bits.id := enqreq_s1.bits.id
+    in.deqrsp.bits.addr := enqreq_s1.bits.addr
+    in.deqrsp.bits.data := mem.readAndHold(tail, true.B)
+    when(in.deqrsp.fire()) {
+      enqrsped := true.B
+      enqreq_s1.valid := false.B
+    }
 
-    //by dongdeji when (in. r.fire()) { r_full := Bool(false) }
-    //by dongdeji when (in.ar.fire()) { r_full := Bool(true) }
+    when(!isFull && in.deqreq.valid && deq_sel && deqrsped ) {
+      deqrsped := false.B
+      deqreq_s1.valid := in.deqreq.valid
+      deqreq_s1.bits := in.deqreq.bits
+    }
 
-    //by dongdeji when (in.ar.fire()) {
-    //by dongdeji   r_id := in.ar.bits.id
-    //by dongdeji   r_sel1 := r_sel0
-    //by dongdeji   r_echo :<= in.ar.bits.echo
-    //by dongdeji }
+    in.deqreq.ready := !isEmpty && deqrsped
 
-    //by dongdeji val ren = in.ar.fire()
-    //by dongdeji val rdata = mem.readAndHold(r_addr, ren)
-    //by dongdeji val rcorrupt = corrupt.map(_.readAndHold(r_addr, ren)(0)).getOrElse(Bool(false))
-
-    //by dongdeji in. r.valid := r_full
-    //by dongdeji in.ar.ready := in.r.ready || !r_full
-
-    //by dongdeji in.r.bits.id   := r_id
-    //by dongdeji in.r.bits.resp := Mux(r_sel1, Mux(rcorrupt, CustomParameters.RESP_SLVERR, CustomParameters.RESP_OKAY), CustomParameters.RESP_DECERR)
-    //by dongdeji in.r.bits.data := Cat(rdata.reverse)
-    //by dongdeji in.r.bits.echo :<= r_echo
-    //by dongdeji in.r.bits.last := Bool(true)
+    when (in.deqreq.fire() && deq_sel && !isEmpty && 
+            in.deqreq.bits.opcode === CustomParameters.OPCODE_DEQ) {
+      tail := tail + 1.U
+    }
+    /**** handle deq end ****/
   }
 }
 

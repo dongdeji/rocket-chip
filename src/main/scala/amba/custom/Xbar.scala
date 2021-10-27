@@ -58,9 +58,9 @@ class CustomXbar(
     val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in .size), awQueueDepth, flow = true)) }
 
     //by dongdeji val requestARIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.ar.bits.addr) }) }
-    val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.a.bits.addr) }) }
+    val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.enqreq.bits.addr) }) }
     //by dongdeji val requestROI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.r.bits.id) } }
-    val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.b.bits.id) } }
+    val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.enqrsp.bits.id) } }
 
     // W follows the path dictated by the AW Q
     for (i <- 0 until io_in.size) { awIn(i).io.enq.bits := requestAWIO(i).asUInt }
@@ -78,10 +78,10 @@ class CustomXbar(
       def trim(id: UInt, size: Int) = if (size <= 1) UInt(0) else id(log2Ceil(size)-1, 0)
       // Manipulate the AXI IDs to differentiate masters
       val r = inputIdRanges(i)
-      in(i).a.bits.id := io_in(i).a.bits.id | UInt(r.start)
+      in(i).enqreq.bits.id := io_in(i).enqreq.bits.id | UInt(r.start)
       //by dongdeji in(i).ar.bits.id := io_in(i).ar.bits.id | UInt(r.start)
       //by dongdeji io_in(i).r.bits.id := trim(in(i).r.bits.id, r.size)
-      io_in(i).b.bits.id := trim(in(i).b.bits.id, r.size)
+      io_in(i).enqrsp.bits.id := trim(in(i).enqrsp.bits.id, r.size)
 
       if (io_out.size > 1) {
         // Block A[RW] if we switch ports, to ensure responses stay ordered (also: beware the dining philosophers)
@@ -89,9 +89,9 @@ class CustomXbar(
         val arFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
         val awFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
         //by dongdeji val arSel = UIntToOH(io_in(i).ar.bits.id, endId)
-        val awSel = UIntToOH(io_in(i).a.bits.id, endId)
+        val awSel = UIntToOH(io_in(i).enqreq.bits.id, endId)
         //by dongdeji val rSel  = UIntToOH(io_in(i).r .bits.id, endId)
-        val bSel  = UIntToOH(io_in(i).b .bits.id, endId)
+        val bSel  = UIntToOH(io_in(i).enqrsp .bits.id, endId)
         //by dongdeji val arTag = OHToUInt(requestARIO(i).asUInt, io_out.size)
         val awTag = OHToUInt(requestAWIO(i).asUInt, io_out.size)
 
@@ -122,8 +122,8 @@ class CustomXbar(
             //by dongdeji   rSel(id) && io_in(i).r.fire() && io_in(i).r.bits.last)
             awFIFOMap(id) := idTracker(
               awTag,
-              awSel(id) && io_in(i).a.fire(),
-              bSel(id) && io_in(i).b.fire())
+              awSel(id) && io_in(i).enqreq.fire(),
+              bSel(id) && io_in(i).enqrsp.fire())
           }
         }
 
@@ -135,13 +135,13 @@ class CustomXbar(
         // To not cause a loop, we cannot have: wvalid := awready
 
         // Block AW if we cannot record the W destination
-        val allowAW = awFIFOMap(io_in(i).a.bits.id)
+        val allowAW = awFIFOMap(io_in(i).enqreq.bits.id)
         val latched = RegInit(Bool(false)) // cut awIn(i).enq.valid from awready
-        in(i).a.valid := io_in(i).a.valid && (latched || awIn(i).io.enq.ready) && allowAW
-        io_in(i).a.ready := in(i).a.ready && (latched || awIn(i).io.enq.ready) && allowAW
-        awIn(i).io.enq.valid := io_in(i).a.valid && !latched
+        in(i).enqreq.valid := io_in(i).enqreq.valid && (latched || awIn(i).io.enq.ready) && allowAW
+        io_in(i).enqreq.ready := in(i).enqreq.ready && (latched || awIn(i).io.enq.ready) && allowAW
+        awIn(i).io.enq.valid := io_in(i).enqreq.valid && !latched
         when (awIn(i).io.enq.fire()) { latched := Bool(true) }
-        when (in(i).a.fire()) { latched := Bool(false) }
+        when (in(i).enqreq.fire()) { latched := Bool(false) }
 
         // Block W if we do not have an AW destination
         //by dongdeji in(i).w.valid := io_in(i).w.valid && awIn(i).io.deq.valid // depends on awvalid (but not awready)
@@ -158,11 +158,11 @@ class CustomXbar(
       if (io_in.size > 1) {
         // Block AW if we cannot record the W source
         val latched = RegInit(Bool(false)) // cut awOut(i).enq.valid from awready
-        io_out(i).a.valid := out(i).a.valid && (latched || awOut(i).io.enq.ready)
-        out(i).a.ready := io_out(i).a.ready && (latched || awOut(i).io.enq.ready)
-        awOut(i).io.enq.valid := out(i).a.valid && !latched
+        io_out(i).enqreq.valid := out(i).enqreq.valid && (latched || awOut(i).io.enq.ready)
+        out(i).enqreq.ready := io_out(i).enqreq.ready && (latched || awOut(i).io.enq.ready)
+        awOut(i).io.enq.valid := out(i).enqreq.valid && !latched
         when (awOut(i).io.enq.fire()) { latched := Bool(true) }
-        when (out(i).a.fire()) { latched := Bool(false) }
+        when (out(i).enqreq.fire()) { latched := Bool(false) }
 
         // Block W if we do not have an AW source
         //by dongdeji io_out(i).w.valid := out(i).w.valid && awOut(i).io.deq.valid // depends on awvalid (but not awready)
@@ -174,15 +174,15 @@ class CustomXbar(
     // Fanout the input sources to the output sinks
     def transpose[T](x: Seq[Seq[T]]) = Seq.tabulate(x(0).size) { i => Seq.tabulate(x.size) { j => x(j)(i) } }
     //by dongdeji val portsAROI = transpose((in  zip requestARIO) map { case (i, r) => CustomXbar.fanout(i.ar, r) })
-    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => CustomXbar.fanout(i.a, r) })
+    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => CustomXbar.fanout(i.enqreq, r) })
     //by dongdeji val portsWOI  = transpose((in  zip requestWIO)  map { case (i, r) => CustomXbar.fanout(i.w,  r) })
     //by dongdeji val portsRIO  = transpose((out zip requestROI)  map { case (o, r) => CustomXbar.fanout(o.r,  r) })
-    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => CustomXbar.fanout(o.b,  r) })
+    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => CustomXbar.fanout(o.enqrsp,  r) })
 
     // Arbitrate amongst the sources
     for (o <- 0 until out.size) {
       awOut(o).io.enq.bits := // Record who won AW arbitration to select W
-        CustomArbiter.returnWinner(arbitrationPolicy)(out(o).a, portsAWOI(o):_*).asUInt
+        CustomArbiter.returnWinner(arbitrationPolicy)(out(o).enqreq, portsAWOI(o):_*).asUInt
       //by dongdeji CustomArbiter(arbitrationPolicy)(out(o).ar, portsAROI(o):_*)
       // W arbitration is informed by the Q, not policy
       //by dongdeji out(o).w.valid := Mux1H(awOut(o).io.deq.bits, portsWOI(o).map(_.valid))
@@ -198,7 +198,7 @@ class CustomXbar(
 
     for (i <- 0 until in.size) {
       //by dongdeji CustomArbiter(arbitrationPolicy)(in(i).r, portsRIO(i):_*)
-      CustomArbiter(arbitrationPolicy)(in(i).b, portsBIO(i):_*)
+      CustomArbiter(arbitrationPolicy)(in(i).enqrsp, portsBIO(i):_*)
     }
   }
 }
@@ -287,9 +287,9 @@ class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
 {
   lazy val json = JSON(bindingTree)
 
-  ElaborationArtefacts.add("graphml", graphML)
-  //ElaborationArtefacts.add("dts", outer.dts)
-  ElaborationArtefacts.add("json", json)
+  ElaborationArtefacts.add(s"${name}.graphml", graphML)
+  //ElaborationArtefacts.add(s"${name}.dts", outer.dts)
+  ElaborationArtefacts.add(s"${name}.json", json)
 
   val xbar = CustomXbar()
   val slaveSize = 0x1000
@@ -319,10 +319,10 @@ class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
 }
 
 class CustomXbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
-  val dut21 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
-  val dut12 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
+  //val dut21 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
+  //val dut12 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
   val dut22 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT22", txns, 2, 2)).module)
-  io.finished := Seq(dut21, dut12, dut22).map(_.io.finished).reduce(_ || _)
+  io.finished := Seq(/*dut21, dut12, */dut22).map(_.io.finished).reduce(_ || _)
 }
 
 

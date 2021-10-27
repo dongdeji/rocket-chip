@@ -9,24 +9,42 @@ import freechips.rocketchip.util._
 
 abstract class CustomBundleBase(params: CustomBundleParameters) extends GenericParameterizedBundle(params)
 
-class CustomBundleA(params: CustomBundleParameters) extends CustomBundleBase(params)
+class CustomEnqReqBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
-  val opcode = UInt(width = 32) // added by dongdeji
+  val opcode = UInt(width = params.opcodeBits) // added by dongdeji  
+  val data = UInt(width = params.dataBits) // added by dongdeji
 }
 
-class CustomBundleB(params: CustomBundleParameters) extends CustomBundleBase(params)
+class CustomEnqRspBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
-  val resp = UInt(width = params.respBits)
+  val data = UInt(width = params.dataBits)
+}
+
+class CustomDeqReqBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+{
+  val id = UInt(width = params.idBits)
+  val addr = UInt(width = params.addrBits)
+  val opcode = UInt(width = params.opcodeBits) // added by dongdeji  
+  val data = UInt(width = params.dataBits) // added by dongdeji
+}
+
+class CustomDeqRspBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+{
+  val id = UInt(width = params.idBits)
+  val addr = UInt(width = params.addrBits)
+  val data = UInt(width = params.dataBits)
 }
 
 class CustomBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
 {
-  val a = Irrevocable(new CustomBundleA (params))
-  val b = Irrevocable(new CustomBundleB (params)).flip
+  val enqreq = Irrevocable(new CustomEnqReqBundle (params))
+  val enqrsp = Irrevocable(new CustomEnqRspBundle (params)).flip
+  val deqreq = Irrevocable(new CustomDeqReqBundle (params))
+  val deqrsp = Irrevocable(new CustomDeqRspBundle (params)).flip
 }
 
 object CustomBundle
