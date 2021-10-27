@@ -1,10 +1,10 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.sramq
 
 import Chisel._
 
-object CustomParameters
+object SramQParameters
 {
   val respBits = 64
   val opcodeBits = 32

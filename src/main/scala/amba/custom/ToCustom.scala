@@ -6,36 +6,36 @@ import Chisel._
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
-import freechips.rocketchip.amba.custom._
-import freechips.rocketchip.amba.custom._
+import freechips.rocketchip.amba.sramq._
+import freechips.rocketchip.amba.sramq._
 import freechips.rocketchip.amba._
 
-class CustomTLStateBundle(val sourceBits: Int) extends Bundle {
+class SramQTLStateBundle(val sourceBits: Int) extends Bundle {
   val size   = UInt(width = 4)
   val source = UInt(width = sourceBits max 1)
 }
 
-case object CustomTLState extends ControlKey[CustomTLStateBundle]("tl_state")
-case class CustomTLStateField(sourceBits: Int) extends BundleField(CustomTLState) {
-  def data = Output(new CustomTLStateBundle(sourceBits))
-  def default(x: CustomTLStateBundle) = {
+case object SramQTLState extends ControlKey[SramQTLStateBundle]("tl_state")
+case class SramQTLStateField(sourceBits: Int) extends BundleField(SramQTLState) {
+  def data = Output(new SramQTLStateBundle(sourceBits))
+  def default(x: SramQTLStateBundle) = {
     x.size   := 0.U
     x.source := 0.U
   }
 }
 
-/** TLtoCustomIdMap serves as a record for the translation performed between id spaces.
+/** TLtoSramQIdMap serves as a record for the translation performed between id spaces.
   *
-  * Its member [customMasters] is used as the new CustomMasterParameters in diplomacy.
-  * Its member [mapping] is used as the template for the circuit generated in TLToCustomNode.module.
+  * Its member [sramqMasters] is used as the new SramQMasterParameters in diplomacy.
+  * Its member [mapping] is used as the template for the circuit generated in TLToSramQNode.module.
   */
-class TLtoCustomIdMap(tlPort: TLMasterPortParameters) extends IdMap[TLToCustomIdMapEntry]
+class TLtoSramQIdMap(tlPort: TLMasterPortParameters) extends IdMap[TLToSramQIdMapEntry]
 {
-  val tlMasters = tlPort.masters.sortBy(_.sourceId).sortWith(TLToCustom.sortByType)
-  private val customIdSize = tlMasters.map { tl => if (tl.requestFifo) 1 else tl.sourceId.size }
-  private val customIdStart = customIdSize.scanLeft(0)(_+_).init
-  val customMasters = customIdStart.zip(customIdSize).zip(tlMasters).map { case ((start, size), tl) =>
-    CustomMasterParameters(
+  val tlMasters = tlPort.masters.sortBy(_.sourceId).sortWith(TLToSramQ.sortByType)
+  private val sramqIdSize = tlMasters.map { tl => if (tl.requestFifo) 1 else tl.sourceId.size }
+  private val sramqIdStart = sramqIdSize.scanLeft(0)(_+_).init
+  val sramqMasters = sramqIdStart.zip(sramqIdSize).zip(tlMasters).map { case ((start, size), tl) =>
+    SramQMasterParameters(
       name      = tl.name,
       id        = IdRange(start, start+size),
       //by dongdeji aligned   = true,
@@ -43,28 +43,28 @@ class TLtoCustomIdMap(tlPort: TLMasterPortParameters) extends IdMap[TLToCustomId
       nodePath  = tl.nodePath)
   }
 
-  private val customIdEnd = customMasters.map(_.id.end).max
-  private val axiDigits = String.valueOf(customIdEnd-1).length()
+  private val sramqIdEnd = sramqMasters.map(_.id.end).max
+  private val axiDigits = String.valueOf(sramqIdEnd-1).length()
   private val tlDigits = String.valueOf(tlPort.endSourceId-1).length()
   protected val fmt = s"\t[%${axiDigits}d, %${axiDigits}d) <= [%${tlDigits}d, %${tlDigits}d) %s%s%s"
 
-  val mapping: Seq[TLToCustomIdMapEntry] = tlMasters.zip(customMasters).map { case (tl, axi) =>
-    TLToCustomIdMapEntry(axi.id, tl.sourceId, tl.name, tl.supports.probe, tl.requestFifo)
+  val mapping: Seq[TLToSramQIdMapEntry] = tlMasters.zip(sramqMasters).map { case (tl, axi) =>
+    TLToSramQIdMapEntry(axi.id, tl.sourceId, tl.name, tl.supports.probe, tl.requestFifo)
   }
 }
 
-case class TLToCustomIdMapEntry(customId: IdRange, tlId: IdRange, name: String, isCache: Boolean, requestFifo: Boolean)
+case class TLToSramQIdMapEntry(sramqId: IdRange, tlId: IdRange, name: String, isCache: Boolean, requestFifo: Boolean)
   extends IdMapEntry
 {
   val from = tlId
-  val to = customId
+  val to = sramqId
   val maxTransactionsInFlight = Some(tlId.size)
 }
 
-case class TLToCustomNode(wcorrupt: Boolean = true)(implicit valName: ValName) extends MixedAdapterNode(TLImp, CustomImp)(
+case class TLToSramQNode(wcorrupt: Boolean = true)(implicit valName: ValName) extends MixedAdapterNode(TLImp, SramQImp)(
   dFn = { p =>
-    CustomMasterPortParameters(
-      masters    = (new TLtoCustomIdMap(p)).customMasters)
+    SramQMasterPortParameters(
+      masters    = (new TLtoSramQIdMap(p)).sramqMasters)
   },
   uFn = { p => TLSlavePortParameters.v1(
     managers = p.slaves.map { case s =>
@@ -83,10 +83,10 @@ case class TLToCustomNode(wcorrupt: Boolean = true)(implicit valName: ValName) e
   })
 
 // wcorrupt alone is not enough; a slave must include AMBACorrupt in the slave port's requestKeys
-class TLToCustom(val combinational: Boolean = true, val adapterName: Option[String] = None, val stripBits: Int = 0, val wcorrupt: Boolean = true)(implicit p: Parameters) extends LazyModule
+class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[String] = None, val stripBits: Int = 0, val wcorrupt: Boolean = true)(implicit p: Parameters) extends LazyModule
 {
-  require(stripBits == 0, "stripBits > 0 is no longer supported on TLToCustom")
-  val node = TLToCustomNode(wcorrupt)
+  require(stripBits == 0, "stripBits > 0 is no longer supported on TLToSramQ")
+  val node = TLToSramQNode(wcorrupt)
 
   lazy val module = new LazyModuleImp(this) {
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
@@ -95,24 +95,24 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       // All pairs of slaves must promise that they will never interleave data
 
       // Construct the source=>ID mapping table
-      val map = new TLtoCustomIdMap(edgeIn.client)
+      val map = new TLtoSramQIdMap(edgeIn.client)
       val sourceStall = Wire(Vec(edgeIn.client.endSourceId, Bool()))
       val sourceTable = Wire(Vec(edgeIn.client.endSourceId, out.enqreq.bits.id))
       val idStall = Wire(init = Vec.fill(edgeOut.master.endId) { Bool(false) })
       var idCount = Array.fill(edgeOut.master.endId) { None:Option[Int] }
 
-      map.mapping.foreach { case TLToCustomIdMapEntry(customId, tlId, _, _, fifo) =>
+      map.mapping.foreach { case TLToSramQIdMapEntry(sramqId, tlId, _, _, fifo) =>
         for (i <- 0 until tlId.size) {
-          val id = customId.start + (if (fifo) 0 else i)
+          val id = sramqId.start + (if (fifo) 0 else i)
           sourceStall(tlId.start + i) := idStall(id)
           sourceTable(tlId.start + i) := UInt(id)
         }
-        if (fifo) { idCount(customId.start) = Some(tlId.size) }
+        if (fifo) { idCount(sramqId.start) = Some(tlId.size) }
       }
 
       adapterName.foreach { n =>
-        println(s"$n Custom-ID <= TL-Source mapping:\n${map.pretty}\n")
-        ElaborationArtefacts.add(s"$n.custom.json", s"""{"mapping":[${map.mapping.mkString(",")}]}""")
+        println(s"$n SramQ-ID <= TL-Source mapping:\n${map.pretty}\n")
+        ElaborationArtefacts.add(s"$n.sramq.json", s"""{"mapping":[${map.mapping.mkString(",")}]}""")
       }
 
       // We need to keep the following state from A => D: (size, source)
@@ -126,17 +126,17 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       val a_isPut   = edgeIn.hasData(in.a.bits)
       val (a_first, a_last, _) = edgeIn.firstlast(in.a)
 
-      //by dongdeji val r_state = out.r.bits.echo(CustomTLState)
+      //by dongdeji val r_state = out.r.bits.echo(SramQTLState)
       //by dongdeji val r_source  = r_state.source
       //by dongdeji val r_size    = r_state.size
 
-      //by dongdeji val b_state = out.enqrsp.bits.echo(CustomTLState)
+      //by dongdeji val b_state = out.enqrsp.bits.echo(SramQTLState)
       //by dongdeji val b_source  = b_state.source
       //by dongdeji val b_size    = b_state.size
 
-      // We need these Queues because Custom queues are irrevocable
+      // We need these Queues because SramQ queues are irrevocable
       val depth = if (combinational) 1 else 2
-      val out_arw = Wire(Decoupled(new CustomEnqReqBundle(out.params)))
+      val out_arw = Wire(Decoupled(new SramQEnqReqBundle(out.params)))
       //by dongdeji val out_w = Wire(out.w)
       //by dongdeji out.w :<> Queue.irrevocable(out_w, entries=depth, flow=combinational)
       val queue_arw = Queue.irrevocable(out_arw, entries=depth, flow=combinational)
@@ -158,16 +158,16 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       //by dongdeji arw.wen   := a_isPut
       arw.id    := sourceTable(a_source)
       arw.addr  := a_address
-      //by dongdeji arw.len   := UIntToOH1(a_size, CustomParameters.lenBits + log2Ceil(beatBytes)) >> log2Ceil(beatBytes)
+      //by dongdeji arw.len   := UIntToOH1(a_size, SramQParameters.lenBits + log2Ceil(beatBytes)) >> log2Ceil(beatBytes)
       //by dongdeji arw.size  := Mux(a_size >= maxSize, maxSize, a_size)
-      //by dongdeji arw.burst := CustomParameters.BURST_INCR
+      //by dongdeji arw.burst := SramQParameters.BURST_INCR
       //by dongdeji arw.lock  := UInt(0) // not exclusive (LR/SC unsupported b/c no forward progress guarantee)
       //by dongdeji arw.cache := UInt(0) // do not allow AXI to modify our transactions
-      //by dongdeji arw.prot  := CustomParameters.PROT_PRIVILEDGED
+      //by dongdeji arw.prot  := SramQParameters.PROT_PRIVILEDGED
       //by dongdeji arw.qos   := UInt(0) // no QoS
       //by dongdeji arw.user :<= in.a.bits.user
       //by dongdeji arw.echo :<= in.a.bits.echo
-      //by dongdeji val a_extra = arw.echo(CustomTLState)
+      //by dongdeji val a_extra = arw.echo(SramQTLState)
       //by dongdeji a_extra.source := a_source
       //by dongdeji a_extra.size   := a_size
 
@@ -216,9 +216,9 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
       // value of RRESP on every beat, and ChipLink may not.
       val r_first = RegInit(Bool(true))
       //by dongdeji when (out.r.fire()) { r_first := out.r.bits.last }
-      //by dongdeji val r_denied  = out.r.bits.resp === CustomParameters.RESP_DECERR holdUnless r_first
-      //by dongdeji val r_corrupt = out.r.bits.resp =/= CustomParameters.RESP_OKAY
-      //by dongdeji val b_denied  = out.enqrsp.bits.resp =/= CustomParameters.RESP_OKAY
+      //by dongdeji val r_denied  = out.r.bits.resp === SramQParameters.RESP_DECERR holdUnless r_first
+      //by dongdeji val r_corrupt = out.r.bits.resp =/= SramQParameters.RESP_OKAY
+      //by dongdeji val b_denied  = out.enqrsp.bits.resp =/= SramQParameters.RESP_OKAY
 
       //by dongdeji val r_d = edgeIn.AccessAck(r_source, r_size, UInt(0), denied = r_denied, corrupt = r_corrupt || r_denied)
       //by dongdeji val b_d = edgeIn.AccessAck(b_source, b_size, denied = b_denied)
@@ -270,12 +270,12 @@ class TLToCustom(val combinational: Boolean = true, val adapterName: Option[Stri
   }
 }
 
-object TLToCustom
+object TLToSramQ
 {
   def apply(combinational: Boolean = true, adapterName: Option[String] = None, stripBits: Int = 0, wcorrupt: Boolean = true)(implicit p: Parameters) =
   {
-    val tl2custom = LazyModule(new TLToCustom(combinational, adapterName, stripBits, wcorrupt))
-    tl2custom.node
+    val tl2sramq = LazyModule(new TLToSramQ(combinational, adapterName, stripBits, wcorrupt))
+    tl2sramq.node
   }
 
   def sortByType(a: TLMasterParameters, b: TLMasterParameters): Boolean = {

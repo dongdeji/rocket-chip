@@ -1,6 +1,6 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.sramq
 
 import Chisel._
 import chisel3.util.IrrevocableIO
@@ -9,7 +9,7 @@ import freechips.rocketchip.diplomacy._
 import scala.math.min
 
 
-class CustomBuffer(
+class SramQBuffer(
   enqreq: BufferParams,
   enqrsp: BufferParams,
   deqreq: BufferParams,
@@ -19,7 +19,7 @@ class CustomBuffer(
   def this(x: BufferParams)(implicit p: Parameters) = this(x, x, x, x)
   def this()(implicit p: Parameters) = this(BufferParams.default)
 
-  val node = CustomAdapterNode(
+  val node = SramQAdapterNode(
     masterFn = { p => p },
     slaveFn  = { p => p.copy(minLatency = p.minLatency + 
                                             min(enqreq.latency, deqreq.latency) + 
@@ -43,15 +43,15 @@ class CustomBuffer(
   }
 }
 
-object CustomBuffer
+object SramQBuffer
 {
-  def apply()(implicit p: Parameters): CustomNode = apply(BufferParams.default)
-  def apply(z: BufferParams)(implicit p: Parameters): CustomNode = apply(z, z)
-  def apply(enq: BufferParams, deq: BufferParams)(implicit p: Parameters): CustomNode = apply(enq, enq, deq, deq)
-  def apply(enqreq: BufferParams, enqrsp: BufferParams, deqreq: BufferParams, deqrsp: BufferParams)(implicit p: Parameters): CustomNode = 
+  def apply()(implicit p: Parameters): SramQNode = apply(BufferParams.default)
+  def apply(z: BufferParams)(implicit p: Parameters): SramQNode = apply(z, z)
+  def apply(enq: BufferParams, deq: BufferParams)(implicit p: Parameters): SramQNode = apply(enq, enq, deq, deq)
+  def apply(enqreq: BufferParams, enqrsp: BufferParams, deqreq: BufferParams, deqrsp: BufferParams)(implicit p: Parameters): SramQNode = 
   {
-    val custombuf = LazyModule(new CustomBuffer(enqreq, enqrsp, deqreq, deqrsp))
-    custombuf.node
+    val sramqbuf = LazyModule(new SramQBuffer(enqreq, enqrsp, deqreq, deqrsp))
+    sramqbuf.node
   }
 }
 

@@ -1,44 +1,44 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.sramq
 
 import freechips.rocketchip.config.Parameters
 import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.prci.{ResetCrossingType, NoResetCrossing, StretchedResetCrossing}
 
-trait CustomOutwardCrossingHelper {
+trait SramQOutwardCrossingHelper {
   type HelperCrossingType <: CrossingType
-  def apply(xing: HelperCrossingType)(implicit p: Parameters): CustomOutwardNode
+  def apply(xing: HelperCrossingType)(implicit p: Parameters): SramQOutwardNode
 }
 
-trait CustomInwardCrossingHelper {
+trait SramQInwardCrossingHelper {
   type HelperCrossingType <: CrossingType
-  def apply(xing: HelperCrossingType)(implicit p: Parameters): CustomInwardNode
+  def apply(xing: HelperCrossingType)(implicit p: Parameters): SramQInwardNode
 }
 
-case class CustomInwardClockCrossingHelper(name: String, scope: LazyScope, node: CustomInwardNode)
-  extends CustomInwardCrossingHelper
+case class SramQInwardClockCrossingHelper(name: String, scope: LazyScope, node: SramQInwardNode)
+  extends SramQInwardCrossingHelper
 {
   type HelperCrossingType = ClockCrossingType
-  def apply(xing: ClockCrossingType = NoCrossing)(implicit p: Parameters): CustomInwardNode = {
+  def apply(xing: ClockCrossingType = NoCrossing)(implicit p: Parameters): SramQInwardNode = {
     xing match {
       //case x: AsynchronousCrossing =>
-      //  node :*=* scope { CustomAsyncCrossingSink(x.asSinkParams) :*=* CustomAsyncNameNode(name) } :*=* CustomAsyncNameNode(name) :*=* CustomAsyncCrossingSource(x.sourceSync)
+      //  node :*=* scope { SramQAsyncCrossingSink(x.asSinkParams) :*=* SramQAsyncNameNode(name) } :*=* SramQAsyncNameNode(name) :*=* SramQAsyncCrossingSource(x.sourceSync)
       case RationalCrossing(direction) =>
-        throw new IllegalArgumentException("Custom Rational crossing unimplemented")
+        throw new IllegalArgumentException("SramQ Rational crossing unimplemented")
       case SynchronousCrossing(buffer) =>
-        node :*=* scope { CustomBuffer(buffer) :*=* CustomNameNode(name) } :*=* CustomNameNode(name)
+        node :*=* scope { SramQBuffer(buffer) :*=* SramQNameNode(name) } :*=* SramQNameNode(name)
       //case CreditedCrossing(sourceDelay, sinkDelay) =>
-      //  node :*=* scope { CustomCreditedSink(sinkDelay) :*=* CustomCreditedNameNode(name) } :*=* CustomCreditedNameNode(name) :*=* CustomCreditedSource(sourceDelay)
+      //  node :*=* scope { SramQCreditedSink(sinkDelay) :*=* SramQCreditedNameNode(name) } :*=* SramQCreditedNameNode(name) :*=* SramQCreditedSource(sourceDelay)
     }
   }
 }
 
-case class CustomInwardResetCrossingHelper(name: String, scope: LazyScope, node: CustomInwardNode)
-  extends CustomInwardCrossingHelper
+case class SramQInwardResetCrossingHelper(name: String, scope: LazyScope, node: SramQInwardNode)
+  extends SramQInwardCrossingHelper
 {
   type HelperCrossingType = ResetCrossingType
-  def apply(xing: ResetCrossingType)(implicit p: Parameters): CustomInwardNode = {
+  def apply(xing: ResetCrossingType)(implicit p: Parameters): SramQInwardNode = {
     xing match {
       case _: NoResetCrossing => node
       case _: StretchedResetCrossing => throw new Exception("No ResetStretcher adapter for AXI$")
@@ -46,29 +46,29 @@ case class CustomInwardResetCrossingHelper(name: String, scope: LazyScope, node:
   }
 }
 
-case class CustomOutwardClockCrossingHelper(name: String, scope: LazyScope, node: CustomOutwardNode)
-  extends CustomOutwardCrossingHelper
+case class SramQOutwardClockCrossingHelper(name: String, scope: LazyScope, node: SramQOutwardNode)
+  extends SramQOutwardCrossingHelper
 {
   type HelperCrossingType = ClockCrossingType
-  def apply(xing: ClockCrossingType = NoCrossing)(implicit p: Parameters): CustomOutwardNode = {
+  def apply(xing: ClockCrossingType = NoCrossing)(implicit p: Parameters): SramQOutwardNode = {
     xing match {
       //case x: AsynchronousCrossing =>
-      //  CustomAsyncCrossingSink(x.asSinkParams) :*=* CustomAsyncNameNode(name) :*=* scope { CustomAsyncNameNode(name) :*=* CustomAsyncCrossingSource(x.sourceSync) } :*=* node
+      //  SramQAsyncCrossingSink(x.asSinkParams) :*=* SramQAsyncNameNode(name) :*=* scope { SramQAsyncNameNode(name) :*=* SramQAsyncCrossingSource(x.sourceSync) } :*=* node
       case RationalCrossing(direction) =>
-        throw new IllegalArgumentException("Custom Rational crossing unimplemented")
+        throw new IllegalArgumentException("SramQ Rational crossing unimplemented")
       case SynchronousCrossing(buffer) =>
-        CustomNameNode(name) :*=* scope { CustomNameNode(name) :*=* CustomBuffer(buffer) } :*=* node
+        SramQNameNode(name) :*=* scope { SramQNameNode(name) :*=* SramQBuffer(buffer) } :*=* node
       //case CreditedCrossing(sourceDelay, sinkDelay) =>
-      //  CustomCreditedSink(sinkDelay) :*=* CustomCreditedNameNode(name) :*=* scope { CustomCreditedNameNode(name) :*=* CustomCreditedSource(sourceDelay) } :*=* node
+      //  SramQCreditedSink(sinkDelay) :*=* SramQCreditedNameNode(name) :*=* scope { SramQCreditedNameNode(name) :*=* SramQCreditedSource(sourceDelay) } :*=* node
     }
   }
 }
 
-case class CustomOutwardResetCrossingHelper(name: String, scope: LazyScope, node: CustomOutwardNode)
-  extends CustomOutwardCrossingHelper
+case class SramQOutwardResetCrossingHelper(name: String, scope: LazyScope, node: SramQOutwardNode)
+  extends SramQOutwardCrossingHelper
 {
   type HelperCrossingType = ResetCrossingType
-  def apply(xing: ResetCrossingType)(implicit p: Parameters): CustomOutwardNode = {
+  def apply(xing: ResetCrossingType)(implicit p: Parameters): SramQOutwardNode = {
     xing match {
       case _: NoResetCrossing => node
       case _: StretchedResetCrossing => throw new Exception("No ResetStretcher adapter for AXI$")

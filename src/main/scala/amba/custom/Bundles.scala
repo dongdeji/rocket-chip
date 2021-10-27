@@ -1,15 +1,15 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.sramq
 
 import Chisel._
 import chisel3.DontCare
 import chisel3.util.Irrevocable
 import freechips.rocketchip.util._
 
-abstract class CustomBundleBase(params: CustomBundleParameters) extends GenericParameterizedBundle(params)
+abstract class SramQBundleBase(params: SramQBundleParameters) extends GenericParameterizedBundle(params)
 
-class CustomEnqReqBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+class SramQEnqReqBundle(params: SramQBundleParameters) extends SramQBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
@@ -17,14 +17,14 @@ class CustomEnqReqBundle(params: CustomBundleParameters) extends CustomBundleBas
   val data = UInt(width = params.dataBits) // added by dongdeji
 }
 
-class CustomEnqRspBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+class SramQEnqRspBundle(params: SramQBundleParameters) extends SramQBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
   val data = UInt(width = params.dataBits)
 }
 
-class CustomDeqReqBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+class SramQDeqReqBundle(params: SramQBundleParameters) extends SramQBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
@@ -32,23 +32,23 @@ class CustomDeqReqBundle(params: CustomBundleParameters) extends CustomBundleBas
   val data = UInt(width = params.dataBits) // added by dongdeji
 }
 
-class CustomDeqRspBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+class SramQDeqRspBundle(params: SramQBundleParameters) extends SramQBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
   val data = UInt(width = params.dataBits)
 }
 
-class CustomBundle(params: CustomBundleParameters) extends CustomBundleBase(params)
+class SramQBundle(params: SramQBundleParameters) extends SramQBundleBase(params)
 {
-  val enqreq = Irrevocable(new CustomEnqReqBundle (params))
-  val enqrsp = Irrevocable(new CustomEnqRspBundle (params)).flip
-  val deqreq = Irrevocable(new CustomDeqReqBundle (params))
-  val deqrsp = Irrevocable(new CustomDeqRspBundle (params)).flip
+  val enqreq = Irrevocable(new SramQEnqReqBundle (params))
+  val enqrsp = Irrevocable(new SramQEnqRspBundle (params)).flip
+  val deqreq = Irrevocable(new SramQDeqReqBundle (params))
+  val deqrsp = Irrevocable(new SramQDeqRspBundle (params)).flip
 }
 
-object CustomBundle
+object SramQBundle
 {
-  def apply(params: CustomBundleParameters) = new CustomBundle(params)
+  def apply(params: SramQBundleParameters) = new SramQBundle(params)
 }
 
