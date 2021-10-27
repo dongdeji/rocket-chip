@@ -87,7 +87,7 @@ class CustomRAM(
     in.deqrsp.valid := enqreq_s1.valid
     in.deqrsp.bits.id := enqreq_s1.bits.id
     in.deqrsp.bits.addr := enqreq_s1.bits.addr
-    in.deqrsp.bits.data := mem.readAndHold(tail, true.B)
+    in.deqrsp.bits.data := Cat(mem.readAndHold(tail, true.B).reverse)
     when(in.deqrsp.fire()) {
       enqrsped := true.B
       enqreq_s1.valid := false.B
