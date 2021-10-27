@@ -47,24 +47,20 @@ class SramQXbar(
     // Grab the port ID mapping
     val inputIdRanges = SramQXbar.mapInputIds(edgesIn.map(_.master))
 
-    // Find a good mask for queueid decoding
-    val port_addrs = edgesOut.map(_.slave.slaves.map(_.queueid).flatten)
+    // Find a good mask for address decoding
+    val port_addrs = edgesOut.map(_.slave.slaves.map(_.address).flatten)
     val routingMask = AddressDecoder(port_addrs)
     val route_addrs = port_addrs.map(seq => AddressSet.unify(seq.map(_.widen(~routingMask)).distinct))
     val outputPorts = route_addrs.map(seq => (addr: UInt) => seq.map(_.contains(addr)).reduce(_ || _))
 
     // To route W we need to record where the AWs went
-    val awIn  = Seq.fill(io_in .size) { Module(new Queue(UInt(width = io_out.size), awQueueDepth, flow = true)) }
-    val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in .size), awQueueDepth, flow = true)) }
-
-    //by dongdeji val requestARIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.ar.bits.addr) }) }
-    val requestAWIO = io_in.map  { i => Vec(outputPorts.map   { o => o(i.enqreq.bits.addr) }) }
-    //by dongdeji val requestROI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.r.bits.id) } }
+    val awIn  = Seq.fill(io_in.size) { Module(new Queue(UInt(width = io_out.size), awQueueDepth, flow = true)) }
+    val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in.size), awQueueDepth, flow = true)) }
+    val requestAWIO = io_in.map  { i => Vec(outputPorts.map { o => o(i.enqreq.bits.addr) }) }
     val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.enqrsp.bits.id) } }
 
     // W follows the path dictated by the AW Q
     for (i <- 0 until io_in.size) { awIn(i).io.enq.bits := requestAWIO(i).asUInt }
-    val requestWIO = awIn.map { q => if (io_out.size > 1) q.io.deq.bits.asBools else Seq(Bool(true)) }
 
     // We need an intermediate size of bundle with the widest possible identifiers
     val wide_bundle = SramQBundleParameters.union(io_in.map(_.params) ++ io_out.map(_.params))
@@ -79,8 +75,6 @@ class SramQXbar(
       // Manipulate the AXI IDs to differentiate masters
       val r = inputIdRanges(i)
       in(i).enqreq.bits.id := io_in(i).enqreq.bits.id | UInt(r.start)
-      //by dongdeji in(i).ar.bits.id := io_in(i).ar.bits.id | UInt(r.start)
-      //by dongdeji io_in(i).r.bits.id := trim(in(i).r.bits.id, r.size)
       io_in(i).enqrsp.bits.id := trim(in(i).enqrsp.bits.id, r.size)
 
       if (io_out.size > 1) {
@@ -88,11 +82,8 @@ class SramQXbar(
         val endId = edgesIn(i).master.endId
         val arFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
         val awFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
-        //by dongdeji val arSel = UIntToOH(io_in(i).ar.bits.id, endId)
         val awSel = UIntToOH(io_in(i).enqreq.bits.id, endId)
-        //by dongdeji val rSel  = UIntToOH(io_in(i).r .bits.id, endId)
         val bSel  = UIntToOH(io_in(i).enqrsp .bits.id, endId)
-        //by dongdeji val arTag = OHToUInt(requestARIO(i).asUInt, io_out.size)
         val awTag = OHToUInt(requestAWIO(i).asUInt, io_out.size)
 
         for (master <- edgesIn(i).master.masters) {
@@ -116,20 +107,12 @@ class SramQXbar(
           }
 
           for (id <- master.id.start until master.id.end) {
-            //by dongdeji arFIFOMap(id) := idTracker(
-            //by dongdeji   arTag,
-            //by dongdeji   arSel(id) && io_in(i).ar.fire(),
-            //by dongdeji   rSel(id) && io_in(i).r.fire() && io_in(i).r.bits.last)
             awFIFOMap(id) := idTracker(
               awTag,
               awSel(id) && io_in(i).enqreq.fire(),
               bSel(id) && io_in(i).enqrsp.fire())
           }
         }
-
-        //by dongdeji val allowAR = arFIFOMap(io_in(i).ar.bits.id)
-        //by dongdeji in(i).ar.valid := io_in(i).ar.valid && allowAR
-        //by dongdeji io_in(i).ar.ready := in(i).ar.ready && allowAR
 
         // Keep in mind that slaves may do this: awready := wvalid, wready := awvalid
         // To not cause a loop, we cannot have: wvalid := awready
@@ -142,11 +125,6 @@ class SramQXbar(
         awIn(i).io.enq.valid := io_in(i).enqreq.valid && !latched
         when (awIn(i).io.enq.fire()) { latched := Bool(true) }
         when (in(i).enqreq.fire()) { latched := Bool(false) }
-
-        // Block W if we do not have an AW destination
-        //by dongdeji in(i).w.valid := io_in(i).w.valid && awIn(i).io.deq.valid // depends on awvalid (but not awready)
-        //by dongdeji io_in(i).w.ready := in(i).w.ready && awIn(i).io.deq.valid
-        //by dongdeji awIn(i).io.deq.ready := io_in(i).w.valid && io_in(i).w.bits.last && in(i).w.ready
       }
     }
 
@@ -163,41 +141,21 @@ class SramQXbar(
         awOut(i).io.enq.valid := out(i).enqreq.valid && !latched
         when (awOut(i).io.enq.fire()) { latched := Bool(true) }
         when (out(i).enqreq.fire()) { latched := Bool(false) }
-
-        // Block W if we do not have an AW source
-        //by dongdeji io_out(i).w.valid := out(i).w.valid && awOut(i).io.deq.valid // depends on awvalid (but not awready)
-        //by dongdeji out(i).w.ready := io_out(i).w.ready && awOut(i).io.deq.valid
-        //by dongdeji awOut(i).io.deq.ready := out(i).w.valid && out(i).w.bits.last && io_out(i).w.ready
       }
     }
 
     // Fanout the input sources to the output sinks
     def transpose[T](x: Seq[Seq[T]]) = Seq.tabulate(x(0).size) { i => Seq.tabulate(x.size) { j => x(j)(i) } }
-    //by dongdeji val portsAROI = transpose((in  zip requestARIO) map { case (i, r) => SramQXbar.fanout(i.ar, r) })
     val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => SramQXbar.fanout(i.enqreq, r) })
-    //by dongdeji val portsWOI  = transpose((in  zip requestWIO)  map { case (i, r) => SramQXbar.fanout(i.w,  r) })
-    //by dongdeji val portsRIO  = transpose((out zip requestROI)  map { case (o, r) => SramQXbar.fanout(o.r,  r) })
     val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => SramQXbar.fanout(o.enqrsp,  r) })
 
     // Arbitrate amongst the sources
     for (o <- 0 until out.size) {
       awOut(o).io.enq.bits := // Record who won AW arbitration to select W
         SramQArbiter.returnWinner(arbitrationPolicy)(out(o).enqreq, portsAWOI(o):_*).asUInt
-      //by dongdeji SramQArbiter(arbitrationPolicy)(out(o).ar, portsAROI(o):_*)
-      // W arbitration is informed by the Q, not policy
-      //by dongdeji out(o).w.valid := Mux1H(awOut(o).io.deq.bits, portsWOI(o).map(_.valid))
-      //by dongdeji out(o).w.bits :<= Mux1H(awOut(o).io.deq.bits, portsWOI(o).map(_.bits))
-      //by dongdeji portsWOI(o).zipWithIndex.map { case (p, i) =>
-      //by dongdeji   if (in.size > 1) {
-      //by dongdeji     p.ready := out(o).w.ready && awOut(o).io.deq.bits(i)
-      //by dongdeji   } else {
-      //by dongdeji     p.ready := out(o).w.ready
-      //by dongdeji   }
-      //by dongdeji }
     }
 
     for (i <- 0 until in.size) {
-      //by dongdeji SramQArbiter(arbitrationPolicy)(in(i).r, portsRIO(i):_*)
       SramQArbiter(arbitrationPolicy)(in(i).enqrsp, portsBIO(i):_*)
     }
   }
@@ -321,7 +279,7 @@ class SramQXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(im
 class SramQXbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
   //val dut21 = Module(LazyModule(new SramQXbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
   //val dut12 = Module(LazyModule(new SramQXbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
-  val dut22 = Module(LazyModule(new SramQXbarFuzzTest("Xbar DUT22", txns, 2, 2)).module)
+  val dut22 = Module(LazyModule(new SramQXbarFuzzTest("Xbar DUT22", txns, 2, 4)).module)
   io.finished := Seq(/*dut21, dut12, */dut22).map(_.io.finished).reduce(_ || _)
 }
 

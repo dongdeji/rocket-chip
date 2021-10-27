@@ -69,7 +69,7 @@ case class TLToSramQNode(wcorrupt: Boolean = true)(implicit valName: ValName) ex
   uFn = { p => TLSlavePortParameters.v1(
     managers = p.slaves.map { case s =>
       TLSlaveParameters.v1(
-        address            = s.queueid,
+        address            = s.address,
         resources          = s.resources,
         nodePath           = s.nodePath,
         supportsGet        = s.supportsRead,

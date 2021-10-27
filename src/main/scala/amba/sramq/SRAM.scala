@@ -13,16 +13,16 @@ import freechips.rocketchip.amba._
 // Setting wcorrupt=true is not enough to enable the w.user field
 // You must also list AMBACorrupt in your master's requestFields
 class SramQRAM(
-    queueid: AddressSet,
+    address: AddressSet,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
     beatBytes: Int = 8,
     devName: Option[String] = None,
     wcorrupt: Boolean = true)
-  (implicit p: Parameters) extends DiplomaticSRAM(queueid, beatBytes, devName)
+  (implicit p: Parameters) extends DiplomaticSRAM(address, beatBytes, devName)
 {
   val node = SramQSlaveNode(Seq(SramQSlavePortParameters(
     Seq(SramQSlaveParameters(
-      queueid       = List(queueid),
+      address       = List(address),
       resources     = resources,
       supportsRead  = TransferSizes(1, beatBytes),
       supportsWrite = TransferSizes(1, beatBytes))),
@@ -42,13 +42,13 @@ class SramQRAM(
     val address = outer.address
 
     //val w_addr = Cat((mask zip (in.enqreq.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
-    //val deq_sel = queueid.contains(in.deqreq.bits.addr)
+    //val deq_sel = address.contains(in.deqreq.bits.addr)
 
     val head = RegInit(0.U(log2Up(SramQParameters.queue_depth*2).W))
     val tail = RegInit(0.U(log2Up(SramQParameters.queue_depth*2).W))
     /**** handle enq begin ****/
     def isFull = (tail(log2Up(SramQParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(SramQParameters.queue_depth)-1,0))
-    val enq_sel = queueid.contains(in.enqreq.bits.addr)
+    val enq_sel = address.contains(in.enqreq.bits.addr)
     val enqrsped = RegInit(true.B)
     val enqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.enqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
       
@@ -79,7 +79,7 @@ class SramQRAM(
 
     /**** handle deq begin ****/
     def isEmpty = (tail(log2Up(SramQParameters.queue_depth)-1,0) === head(log2Up(SramQParameters.queue_depth)-1,0))
-    val deq_sel = queueid.contains(in.deqreq.bits.addr)
+    val deq_sel = address.contains(in.deqreq.bits.addr)
     val deqrsped = RegInit(true.B)
     val deqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.deqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
     
@@ -111,7 +111,7 @@ class SramQRAM(
 object SramQRAM
 {
   def apply(
-    queueid: AddressSet,
+    address: AddressSet,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
     beatBytes: Int = 4,
     devName: Option[String] = None,
@@ -119,7 +119,7 @@ object SramQRAM
   (implicit p: Parameters) =
   {
     val sramqram = LazyModule(new SramQRAM(
-      queueid = queueid,
+      address = address,
       beatBytes = beatBytes,
       devName = devName,
       wcorrupt = wcorrupt))
