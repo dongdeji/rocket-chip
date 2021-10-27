@@ -47,8 +47,8 @@ class SramQXbar(
     // Grab the port ID mapping
     val inputIdRanges = SramQXbar.mapInputIds(edgesIn.map(_.master))
 
-    // Find a good mask for address decoding
-    val port_addrs = edgesOut.map(_.slave.slaves.map(_.address).flatten)
+    // Find a good mask for queueid decoding
+    val port_addrs = edgesOut.map(_.slave.slaves.map(_.queueid).flatten)
     val routingMask = AddressDecoder(port_addrs)
     val route_addrs = port_addrs.map(seq => AddressSet.unify(seq.map(_.widen(~routingMask)).distinct))
     val outputPorts = route_addrs.map(seq => (addr: UInt) => seq.map(_.contains(addr)).reduce(_ || _))

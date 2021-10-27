@@ -10,20 +10,20 @@ import freechips.rocketchip.util._
 import scala.math.max
 
 case class SramQSlaveParameters(
-  address:       Seq[AddressSet],
+  queueid:       Seq[AddressSet],
   resources:     Seq[Resource] = Nil,
   nodePath:      Seq[BaseNode] = Seq(),
   supportsWrite: TransferSizes = TransferSizes.none,
   supportsRead:  TransferSizes = TransferSizes.none,
   device: Option[Device] = None) // The device will not interleave responses (R+B)
 {
-  address.foreach { a => require (a.finite) }
-  address.combinations(2).foreach { case Seq(x,y) => require (!x.overlaps(y), s"$x and $y overlap") }
+  queueid.foreach { a => require (a.finite) }
+  queueid.combinations(2).foreach { case Seq(x,y) => require (!x.overlaps(y), s"$x and $y overlap") }
 
   val name = nodePath.lastOption.map(_.lazyModule.name).getOrElse("disconnected")
   val maxTransfer = max(supportsWrite.max, supportsRead.max)
-  val maxAddress = address.map(_.max).max
-  val minAlignment = address.map(_.alignment).min
+  val maxAddress = queueid.map(_.max).max
+  val minAlignment = queueid.map(_.alignment).min
 
   // The device had better not support a transfer larger than its alignment
   require (minAlignment >= maxTransfer,
@@ -49,7 +49,7 @@ case class SramQSlavePortParameters(
 
   // Require disjoint ranges for addresses
   slaves.combinations(2).foreach { case Seq(x,y) =>
-    x.address.foreach { a => y.address.foreach { b =>
+    x.queueid.foreach { a => y.queueid.foreach { b =>
       require (!a.overlaps(b), s"$a and $b overlap")
     } }
   }
