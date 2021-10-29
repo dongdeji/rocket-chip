@@ -11,19 +11,14 @@ import scala.math.min
 
 class SimpleBuffer(
   req: BufferParams,
-  rsp: BufferParams,
-  deqreq: BufferParams,
-  deqrsp: BufferParams)(implicit p: Parameters) extends LazyModule
+  rsp: BufferParams)(implicit p: Parameters) extends LazyModule
 {
-  def this(enq: BufferParams, deq: BufferParams)(implicit p: Parameters) = this(enq, enq, deq, deq)
-  def this(x: BufferParams)(implicit p: Parameters) = this(x, x, x, x)
+  def this(x: BufferParams)(implicit p: Parameters) = this(x, x)
   def this()(implicit p: Parameters) = this(BufferParams.default)
 
   val node = SimpleAdapterNode(
     masterFn = { p => p },
-    slaveFn  = { p => p.copy(minLatency = p.minLatency + 
-                                            min(req.latency, deqreq.latency) + 
-                                              min(rsp.latency, deqrsp.latency)) })
+    slaveFn  = { p => p.copy(minLatency = p.minLatency + req.latency + rsp.latency) })
 
   lazy val module = new LazyModuleImp(this) {
     def buffer[T <: Data](config: BufferParams, data: IrrevocableIO[T]): IrrevocableIO[T] = {
@@ -37,8 +32,6 @@ class SimpleBuffer(
     (node.in zip node.out) foreach { case ((in, edgeIn), (out, edgeOut)) =>
       out.req <> buffer(req, in.req)
       in.rsp <> buffer(rsp, out.rsp)
-      out.deqreq <> buffer(deqreq, in.deqreq)
-      in.deqrsp <> buffer(deqrsp, out.deqrsp)
     }
   }
 }
@@ -47,10 +40,9 @@ object SimpleBuffer
 {
   def apply()(implicit p: Parameters): SimpleNode = apply(BufferParams.default)
   def apply(z: BufferParams)(implicit p: Parameters): SimpleNode = apply(z, z)
-  def apply(enq: BufferParams, deq: BufferParams)(implicit p: Parameters): SimpleNode = apply(enq, enq, deq, deq)
-  def apply(req: BufferParams, rsp: BufferParams, deqreq: BufferParams, deqrsp: BufferParams)(implicit p: Parameters): SimpleNode = 
+  def apply(req: BufferParams, rsp: BufferParams)(implicit p: Parameters): SimpleNode = 
   {
-    val sramqbuf = LazyModule(new SimpleBuffer(req, rsp, deqreq, deqrsp))
+    val sramqbuf = LazyModule(new SimpleBuffer(req, rsp))
     sramqbuf.node
   }
 }

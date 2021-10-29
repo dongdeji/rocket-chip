@@ -43,8 +43,6 @@ class SimpleBundle(params: SimpleBundleParameters) extends SimpleBundleBase(para
 {
   val req = Irrevocable(new SimpleReqBundle (params))
   val rsp = Irrevocable(new SimpleRspBundle (params)).flip
-  val deqreq = Irrevocable(new SimpleDeqReqBundle (params))
-  val deqrsp = Irrevocable(new SimpleDeqRspBundle (params)).flip
 }
 
 object SimpleBundle

@@ -76,35 +76,6 @@ class SimpleRAM(
       head := head + 1.U
     }
     /**** handle enq end ****/
-
-    /**** handle deq begin ****/
-    def isEmpty = (tail(log2Up(SimpleParameters.queue_depth)-1,0) === head(log2Up(SimpleParameters.queue_depth)-1,0))
-    val deq_sel = address.contains(in.deqreq.bits.addr)
-    val deqrsped = RegInit(true.B)
-    val deqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.deqreq.bits.cloneType)));chisel3.dontTouch(req_s1)
-    
-    in.deqrsp.valid := req_s1.valid
-    in.deqrsp.bits.id := req_s1.bits.id
-    in.deqrsp.bits.addr := req_s1.bits.addr
-    in.deqrsp.bits.data := Cat(mem.readAndHold(tail, true.B).reverse)
-    when(in.deqrsp.fire()) {
-      rsped := true.B
-      req_s1.valid := false.B
-    }
-
-    when(!isFull && in.deqreq.valid && deq_sel && deqrsped ) {
-      deqrsped := false.B
-      deqreq_s1.valid := in.deqreq.valid
-      deqreq_s1.bits := in.deqreq.bits
-    }
-
-    in.deqreq.ready := !isEmpty && deqrsped
-
-    when (in.deqreq.fire() && deq_sel && !isEmpty && 
-            in.deqreq.bits.opcode === SimpleParameters.OPCODE_DEQ) {
-      tail := tail + 1.U
-    }
-    /**** handle deq end ****/
   }
 }
 
