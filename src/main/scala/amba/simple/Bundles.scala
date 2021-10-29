@@ -41,8 +41,8 @@ class SimpleDeqRspBundle(params: SimpleBundleParameters) extends SimpleBundleBas
 
 class SimpleBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
 {
-  val enqreq = Irrevocable(new SimpleReqBundle (params))
-  val enqrsp = Irrevocable(new SimpleRspBundle (params)).flip
+  val req = Irrevocable(new SimpleReqBundle (params))
+  val rsp = Irrevocable(new SimpleRspBundle (params)).flip
   val deqreq = Irrevocable(new SimpleDeqReqBundle (params))
   val deqrsp = Irrevocable(new SimpleDeqRspBundle (params)).flip
 }
