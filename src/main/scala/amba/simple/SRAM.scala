@@ -1,6 +1,6 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.simple
 
 import Chisel._
 import freechips.rocketchip.config.Parameters
@@ -12,7 +12,7 @@ import freechips.rocketchip.amba._
 
 // Setting wcorrupt=true is not enough to enable the w.user field
 // You must also list AMBACorrupt in your master's requestFields
-class CustomRAM(
+class SimpleRAM(
     address: AddressSet,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
     beatBytes: Int = 8,
@@ -20,8 +20,8 @@ class CustomRAM(
     wcorrupt: Boolean = true)
   (implicit p: Parameters) extends DiplomaticSRAM(address, beatBytes, devName)
 {
-  val node = CustomSlaveNode(Seq(CustomSlavePortParameters(
-    Seq(CustomSlaveParameters(
+  val node = SimpleSlaveNode(Seq(SimpleSlavePortParameters(
+    Seq(SimpleSlaveParameters(
       address       = List(address),
       resources     = resources,
       supportsRead  = TransferSizes(1, beatBytes),
@@ -35,7 +35,7 @@ class CustomRAM(
     val (in, edgeIn) = node.in(0)
     val laneDataBits = 8
     val (mem, omSRAM, omMem) = makeSinglePortedByteWriteSeqMem(
-                                  size = BigInt(CustomParameters.queue_depth),
+                                  size = BigInt(SimpleParameters.queue_depth),
                                   lanes = beatBytes,
                                   bits = laneDataBits)
     val eccCode = None
@@ -44,10 +44,10 @@ class CustomRAM(
     //val w_addr = Cat((mask zip (in.enqreq.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
     //val deq_sel = address.contains(in.deqreq.bits.addr)
 
-    val head = RegInit(0.U(log2Up(CustomParameters.queue_depth*2).W))
-    val tail = RegInit(0.U(log2Up(CustomParameters.queue_depth*2).W))
+    val head = RegInit(0.U(log2Up(SimpleParameters.queue_depth*2).W))
+    val tail = RegInit(0.U(log2Up(SimpleParameters.queue_depth*2).W))
     /**** handle enq begin ****/
-    def isFull = (tail(log2Up(CustomParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(CustomParameters.queue_depth)-1,0))
+    def isFull = (tail(log2Up(SimpleParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(SimpleParameters.queue_depth)-1,0))
     val enq_sel = address.contains(in.enqreq.bits.addr)
     val enqrsped = RegInit(true.B)
     val enqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.enqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
@@ -71,14 +71,14 @@ class CustomRAM(
 
     val wdata = Vec.tabulate(beatBytes) { i => in.enqreq.bits.data(8*(i+1)-1, 8*i) }
     when (in.enqreq.fire() && enq_sel && !isFull && 
-            in.enqreq.bits.opcode === CustomParameters.OPCODE_ENQ) {
+            in.enqreq.bits.opcode === SimpleParameters.OPCODE_ENQ) {
       mem.write(head, wdata, Fill(beatBytes, true.B).asBools)
       head := head + 1.U
     }
     /**** handle enq end ****/
 
     /**** handle deq begin ****/
-    def isEmpty = (tail(log2Up(CustomParameters.queue_depth)-1,0) === head(log2Up(CustomParameters.queue_depth)-1,0))
+    def isEmpty = (tail(log2Up(SimpleParameters.queue_depth)-1,0) === head(log2Up(SimpleParameters.queue_depth)-1,0))
     val deq_sel = address.contains(in.deqreq.bits.addr)
     val deqrsped = RegInit(true.B)
     val deqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.deqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
@@ -101,14 +101,14 @@ class CustomRAM(
     in.deqreq.ready := !isEmpty && deqrsped
 
     when (in.deqreq.fire() && deq_sel && !isEmpty && 
-            in.deqreq.bits.opcode === CustomParameters.OPCODE_DEQ) {
+            in.deqreq.bits.opcode === SimpleParameters.OPCODE_DEQ) {
       tail := tail + 1.U
     }
     /**** handle deq end ****/
   }
 }
 
-object CustomRAM
+object SimpleRAM
 {
   def apply(
     address: AddressSet,
@@ -118,7 +118,7 @@ object CustomRAM
     wcorrupt: Boolean = true)
   (implicit p: Parameters) =
   {
-    val sramqram = LazyModule(new CustomRAM(
+    val sramqram = LazyModule(new SimpleRAM(
       address = address,
       beatBytes = beatBytes,
       devName = devName,

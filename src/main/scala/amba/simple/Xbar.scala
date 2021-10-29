@@ -1,6 +1,6 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.simple
 
 import Chisel._
 import chisel3.util.IrrevocableIO
@@ -10,7 +10,7 @@ import freechips.rocketchip.util._
 import freechips.rocketchip.unittest._
 import freechips.rocketchip.tilelink._
 
-class CustomXbar(
+class SimpleXbar(
   arbitrationPolicy: TLArbiter.Policy = TLArbiter.roundRobin,
   maxFlightPerId:    Int = 7,
   awQueueDepth:      Int = 2)(implicit p: Parameters) extends LazyModule
@@ -18,10 +18,10 @@ class CustomXbar(
   require (maxFlightPerId >= 1)
   require (awQueueDepth >= 1)
 
-  val node = new CustomNexusNode(
+  val node = new SimpleNexusNode(
     masterFn  = { seq =>
       seq(0).copy(
-        masters = (CustomXbar.mapInputIds(seq) zip seq) flatMap { case (range, port) =>
+        masters = (SimpleXbar.mapInputIds(seq) zip seq) flatMap { case (range, port) =>
           port.masters map { master => master.copy(id = master.id.shift(range.start)) }
         }
       )
@@ -45,7 +45,7 @@ class CustomXbar(
     val (io_out, edgesOut) = node.out.unzip
 
     // Grab the port ID mapping
-    val inputIdRanges = CustomXbar.mapInputIds(edgesIn.map(_.master))
+    val inputIdRanges = SimpleXbar.mapInputIds(edgesIn.map(_.master))
 
     // Find a good mask for address decoding
     val port_addrs = edgesOut.map(_.slave.slaves.map(_.address).flatten)
@@ -63,10 +63,10 @@ class CustomXbar(
     for (i <- 0 until io_in.size) { awIn(i).io.enq.bits := requestAWIO(i).asUInt }
 
     // We need an intermediate size of bundle with the widest possible identifiers
-    val wide_bundle = CustomBundleParameters.union(io_in.map(_.params) ++ io_out.map(_.params))
+    val wide_bundle = SimpleBundleParameters.union(io_in.map(_.params) ++ io_out.map(_.params))
 
     // Transform input bundles
-    val in = Wire(Vec(io_in.size, CustomBundle(wide_bundle)))
+    val in = Wire(Vec(io_in.size, SimpleBundle(wide_bundle)))
     for (i <- 0 until in.size) {
       in(i) :<> io_in(i)
 
@@ -129,7 +129,7 @@ class CustomXbar(
     }
 
     // Transform output bundles
-    val out = Wire(Vec(io_out.size, CustomBundle(wide_bundle)))
+    val out = Wire(Vec(io_out.size, SimpleBundle(wide_bundle)))
     for (i <- 0 until out.size) {
       io_out(i) :<> out(i)
 
@@ -146,36 +146,36 @@ class CustomXbar(
 
     // Fanout the input sources to the output sinks
     def transpose[T](x: Seq[Seq[T]]) = Seq.tabulate(x(0).size) { i => Seq.tabulate(x.size) { j => x(j)(i) } }
-    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => CustomXbar.fanout(i.enqreq, r) })
-    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => CustomXbar.fanout(o.enqrsp,  r) })
+    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => SimpleXbar.fanout(i.enqreq, r) })
+    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => SimpleXbar.fanout(o.enqrsp,  r) })
 
     // Arbitrate amongst the sources
     for (o <- 0 until out.size) {
       awOut(o).io.enq.bits := // Record who won AW arbitration to select W
-        CustomArbiter.returnWinner(arbitrationPolicy)(out(o).enqreq, portsAWOI(o):_*).asUInt
+        SimpleArbiter.returnWinner(arbitrationPolicy)(out(o).enqreq, portsAWOI(o):_*).asUInt
     }
 
     for (i <- 0 until in.size) {
-      CustomArbiter(arbitrationPolicy)(in(i).enqrsp, portsBIO(i):_*)
+      SimpleArbiter(arbitrationPolicy)(in(i).enqrsp, portsBIO(i):_*)
     }
   }
 }
 
-object CustomXbar
+object SimpleXbar
 {
   def apply(
     arbitrationPolicy: TLArbiter.Policy = TLArbiter.roundRobin,
     maxFlightPerId:    Int = 7,
     awQueueDepth:      Int = 2)(implicit p: Parameters) =
   {
-    val sramqxbar = LazyModule(new CustomXbar(arbitrationPolicy, maxFlightPerId, awQueueDepth))
+    val sramqxbar = LazyModule(new SimpleXbar(arbitrationPolicy, maxFlightPerId, awQueueDepth))
     sramqxbar.node
   }
 
-  def mapInputIds(ports: Seq[CustomMasterPortParameters]) = TLXbar.assignRanges(ports.map(_.endId))
+  def mapInputIds(ports: Seq[SimpleMasterPortParameters]) = TLXbar.assignRanges(ports.map(_.endId))
 
   // Replicate an input port to each output port
-  def fanout[T <: CustomBundleBase](input: IrrevocableIO[T], select: Seq[Bool]) = {
+  def fanout[T <: SimpleBundleBase](input: IrrevocableIO[T], select: Seq[Bool]) = {
     val filtered = Wire(Vec(select.size, input))
     for (i <- 0 until select.size) {
       filtered(i).bits :<= input.bits
@@ -186,7 +186,7 @@ object CustomXbar
   }
 }
 
-object CustomArbiter
+object SimpleArbiter
 {
   def apply[T <: Data](policy: TLArbiter.Policy)(sink: IrrevocableIO[T], sources: IrrevocableIO[T]*): Unit = {
     if (sources.isEmpty) {
@@ -241,7 +241,7 @@ object CustomArbiter
   }
 }
 
-class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(implicit p: Parameters) extends LazyModule with BindingScope
+class SimpleXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(implicit p: Parameters) extends LazyModule with BindingScope
 {
   lazy val json = JSON(bindingTree)
 
@@ -249,24 +249,24 @@ class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
   //ElaborationArtefacts.add(s"${name}.dts", outer.dts)
   ElaborationArtefacts.add(s"${name}.json", json)
 
-  val xbar = CustomXbar()
+  val xbar = SimpleXbar()
   val slaveSize = 0x1000
   val masterBandSize = slaveSize >> log2Ceil(nMasters)
   def filter(i: Int) = TLFilter.mSelectIntersect(AddressSet(i * masterBandSize, ~BigInt(slaveSize - masterBandSize)))
 
-  val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new CustomRAM(AddressSet(slaveSize * i, slaveSize-1))) }
+  val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new SimpleRAM(AddressSet(slaveSize * i, slaveSize-1))) }
   slaves.foreach { s => (s.node
-    //:= CustomFragmenter()
-    := CustomBuffer(BufferParams.flow)
-    := CustomBuffer(BufferParams.flow)
-    //:= CustomDelayer(0.25)
+    //:= SimpleFragmenter()
+    := SimpleBuffer(BufferParams.flow)
+    := SimpleBuffer(BufferParams.flow)
+    //:= SimpleDelayer(0.25)
     := xbar) }
 
   val masters = Seq.fill(nMasters) { LazyModule(new TLFuzzer(txns, 4, nOrdered = Some(1))) }
   masters.zipWithIndex.foreach { case (m, i) => (xbar
-    //:= CustomDelayer(0.25)
-    //:= CustomDeinterleaver(4096)
-    := TLToCustom()
+    //:= SimpleDelayer(0.25)
+    //:= SimpleDeinterleaver(4096)
+    := TLToSimple()
     := TLFilter(filter(i))
     := TLRAMModel(s"${name} Master $i")
     := m.node) }
@@ -276,10 +276,10 @@ class CustomXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
   }
 }
 
-class CustomXbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
-  //val dut21 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
-  //val dut12 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
-  val dut22 = Module(LazyModule(new CustomXbarFuzzTest("Xbar DUT22", txns, 2, 4)).module)
+class SimpleXbarTest(txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
+  //val dut21 = Module(LazyModule(new SimpleXbarFuzzTest("Xbar DUT21", txns, 2, 1)).module)
+  //val dut12 = Module(LazyModule(new SimpleXbarFuzzTest("Xbar DUT12", txns, 1, 2)).module)
+  val dut22 = Module(LazyModule(new SimpleXbarFuzzTest("Xbar DUT22", txns, 2, 4)).module)
   io.finished := Seq(/*dut21, dut12, */dut22).map(_.io.finished).reduce(_ || _)
 }
 

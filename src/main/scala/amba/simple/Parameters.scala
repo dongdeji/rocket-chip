@@ -1,6 +1,6 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.simple
 
 import Chisel._
 import chisel3.internal.sourceinfo.SourceInfo
@@ -9,7 +9,7 @@ import freechips.rocketchip.diplomacy._
 import freechips.rocketchip.util._
 import scala.math.max
 
-case class CustomSlaveParameters(
+case class SimpleSlaveParameters(
   address:       Seq[AddressSet],
   resources:     Seq[Resource] = Nil,
   nodePath:      Seq[BaseNode] = Seq(),
@@ -31,8 +31,8 @@ case class CustomSlaveParameters(
 
 }
 
-case class CustomSlavePortParameters(
-  slaves:     Seq[CustomSlaveParameters],
+case class SimpleSlavePortParameters(
+  slaves:     Seq[SimpleSlaveParameters],
   beatBytes:  Int,
   minLatency: Int = 1)
 {
@@ -45,7 +45,7 @@ case class CustomSlavePortParameters(
   // Check the link is not pointlessly wide
   require (maxTransfer >= beatBytes,
     s"maxTransfer ($maxTransfer) should not be smaller than bus width ($beatBytes)")
-  // Check that the link can be implemented in Custom
+  // Check that the link can be implemented in Simple
 
   // Require disjoint ranges for addresses
   slaves.combinations(2).foreach { case Seq(x,y) =>
@@ -55,7 +55,7 @@ case class CustomSlavePortParameters(
   }
 }
 
-case class CustomMasterParameters(
+case class SimpleMasterParameters(
   name:      String,
   id:        IdRange       = IdRange(0, 1),
   maxFlight: Option[Int]   = None, // None = infinite, else is a per-ID cap
@@ -64,82 +64,82 @@ case class CustomMasterParameters(
   maxFlight.foreach { m => require (m >= 0) }
 }
 
-case class CustomMasterPortParameters(
-  masters:    Seq[CustomMasterParameters])
+case class SimpleMasterPortParameters(
+  masters:    Seq[SimpleMasterParameters])
 {
   val endId = masters.map(_.id.end).max
 
   // Require disjoint ranges for ids
   IdRange.overlaps(masters.map(_.id)).foreach { case (x, y) =>
-    require (!x.overlaps(y), s"CustomMasterParameters.id $x and $y overlap")
+    require (!x.overlaps(y), s"SimpleMasterParameters.id $x and $y overlap")
   }
 }
 
-case class CustomBundleParameters(
+case class SimpleBundleParameters(
   addrBits: Int,
   dataBits: Int,
   idBits:   Int)
 {
-  require (dataBits >= 8, s"Custom data bits must be >= 8 (got $dataBits)")
-  require (addrBits >= 1, s"Custom addr bits must be >= 1 (got $addrBits)")
-  require (idBits >= 1, s"Custom id bits must be >= 1 (got $idBits)")
-  require (isPow2(dataBits), s"Custom data bits must be pow2 (got $dataBits)")
+  require (dataBits >= 8, s"Simple data bits must be >= 8 (got $dataBits)")
+  require (addrBits >= 1, s"Simple addr bits must be >= 1 (got $addrBits)")
+  require (idBits >= 1, s"Simple id bits must be >= 1 (got $idBits)")
+  require (isPow2(dataBits), s"Simple data bits must be pow2 (got $dataBits)")
 
   // Bring the globals into scope
-  val respBits = CustomParameters.respBits
-  val opcodeBits = CustomParameters.opcodeBits
+  val respBits = SimpleParameters.respBits
+  val opcodeBits = SimpleParameters.opcodeBits
 
-  def union(x: CustomBundleParameters) =
-    CustomBundleParameters(
+  def union(x: SimpleBundleParameters) =
+    SimpleBundleParameters(
       max(addrBits,   x.addrBits),
       max(dataBits,   x.dataBits),
       max(idBits,     x.idBits))
 }
 
-object CustomBundleParameters
+object SimpleBundleParameters
 {
-  val emptyBundleParams = CustomBundleParameters(addrBits=1, dataBits=8, idBits=1/*, echoFields=Nil, requestFields=Nil, responseFields=Nil*/)
-  def union(x: Seq[CustomBundleParameters]) = x.foldLeft(emptyBundleParams)((x,y) => x.union(y))
+  val emptyBundleParams = SimpleBundleParameters(addrBits=1, dataBits=8, idBits=1/*, echoFields=Nil, requestFields=Nil, responseFields=Nil*/)
+  def union(x: Seq[SimpleBundleParameters]) = x.foldLeft(emptyBundleParams)((x,y) => x.union(y))
 
-  def apply(master: CustomMasterPortParameters, slave: CustomSlavePortParameters) =
-    new CustomBundleParameters(
+  def apply(master: SimpleMasterPortParameters, slave: SimpleSlavePortParameters) =
+    new SimpleBundleParameters(
       addrBits = log2Up(slave.maxAddress+1),
       dataBits = slave.beatBytes * 8,
       idBits   = log2Up(master.endId))
 }
 
-case class CustomEdgeParameters(
-  master: CustomMasterPortParameters,
-  slave:  CustomSlavePortParameters,
+case class SimpleEdgeParameters(
+  master: SimpleMasterPortParameters,
+  slave:  SimpleSlavePortParameters,
   params: Parameters,
   sourceInfo: SourceInfo)
 {
-  val bundle = CustomBundleParameters(master, slave)
+  val bundle = SimpleBundleParameters(master, slave)
 }
 
-case class CustomBufferParams(
+case class SimpleBufferParams(
   a: BufferParams = BufferParams.none,
   b: BufferParams = BufferParams.none
-) extends DirectedBuffers[CustomBufferParams] {
+) extends DirectedBuffers[SimpleBufferParams] {
   def copyIn(x: BufferParams) = this.copy(b = x )
   def copyOut(x: BufferParams) = this.copy(a = x )
   def copyInOut(x: BufferParams) = this.copyIn(x).copyOut(x)
 }
 
-/** Pretty printing of Custom source id maps */
-class CustomIdMap(axi4: CustomMasterPortParameters) extends IdMap[CustomIdMapEntry] {
+/** Pretty printing of Simple source id maps */
+class SimpleIdMap(axi4: SimpleMasterPortParameters) extends IdMap[SimpleIdMapEntry] {
   private val axi4Digits = String.valueOf(axi4.endId-1).length()
   protected val fmt = s"\t[%${axi4Digits}d, %${axi4Digits}d) %s%s%s"
   private val sorted = axi4.masters.sortBy(_.id)
 
-  val mapping: Seq[CustomIdMapEntry] = sorted.map { case c =>
+  val mapping: Seq[SimpleIdMapEntry] = sorted.map { case c =>
     // to conservatively state max number of transactions, assume every id has up to c.maxFlight and reuses ids between AW and AR channels
     val maxTransactionsInFlight = c.maxFlight.map(_ * c.id.size * 2)
-    CustomIdMapEntry(c.id, c.name, maxTransactionsInFlight)
+    SimpleIdMapEntry(c.id, c.name, maxTransactionsInFlight)
   }
 }
 
-case class CustomIdMapEntry(axi4Id: IdRange, name: String, maxTransactionsInFlight: Option[Int] = None) extends IdMapEntry {
+case class SimpleIdMapEntry(axi4Id: IdRange, name: String, maxTransactionsInFlight: Option[Int] = None) extends IdMapEntry {
   val from = axi4Id
   val to = axi4Id
   val isCache = false

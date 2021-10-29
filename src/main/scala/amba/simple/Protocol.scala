@@ -1,10 +1,10 @@
 // See LICENSE.SiFive for license details.
 
-package freechips.rocketchip.amba.custom
+package freechips.rocketchip.amba.simple
 
 import Chisel._
 
-object CustomParameters
+object SimpleParameters
 {
   val respBits = 64
   val opcodeBits = 32
