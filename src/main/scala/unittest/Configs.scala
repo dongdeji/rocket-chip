@@ -7,6 +7,7 @@ import freechips.rocketchip.amba.ahb._
 import freechips.rocketchip.amba.apb._
 import freechips.rocketchip.amba.axi4._
 import freechips.rocketchip.amba.sramq._
+import freechips.rocketchip.amba.custom._
 import freechips.rocketchip.config._
 import freechips.rocketchip.subsystem.{BaseSubsystemConfig}
 import freechips.rocketchip.devices.tilelink._
@@ -34,7 +35,8 @@ class WithAMBAUnitTests extends Config((site, here, up) => {
       //Module(new AXI4LiteUserBitsFuzzRAMTest(txns=6*txns, timeout=timeout)),
       //Module(new AXI4FullFuzzRAMTest(        txns=3*txns, timeout=timeout)),
       //Module(new AXI4BridgeTest(             txns=3*txns, timeout=timeout)),
-      Module(new SramQXbarTest(               txns=1*txns, timeout=timeout))/*,
+      //Module(new SramQXbarTest(               txns=1*txns, timeout=timeout)),
+      Module(new CustomXbarTest(               txns=1*txns, timeout=timeout))/*,
       Module(new AXI4XbarTest(               txns=1*txns, timeout=timeout)),
       Module(new AXI4RAMAsyncCrossingTest(   txns=3*txns, timeout=timeout)),
       Module(new AXI4RAMCreditedCrossingTest(txns=3*txns, timeout=timeout))*/) }
