@@ -9,7 +9,7 @@ import freechips.rocketchip.util._
 
 abstract class SimpleBundleBase(params: SimpleBundleParameters) extends GenericParameterizedBundle(params)
 
-class SimpleEnqReqBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
+class SimpleReqBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
@@ -17,7 +17,7 @@ class SimpleEnqReqBundle(params: SimpleBundleParameters) extends SimpleBundleBas
   val data = UInt(width = params.dataBits) // added by dongdeji
 }
 
-class SimpleEnqRspBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
+class SimpleRspBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
 {
   val id = UInt(width = params.idBits)
   val addr = UInt(width = params.addrBits)
@@ -41,8 +41,8 @@ class SimpleDeqRspBundle(params: SimpleBundleParameters) extends SimpleBundleBas
 
 class SimpleBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
 {
-  val enqreq = Irrevocable(new SimpleEnqReqBundle (params))
-  val enqrsp = Irrevocable(new SimpleEnqRspBundle (params)).flip
+  val enqreq = Irrevocable(new SimpleReqBundle (params))
+  val enqrsp = Irrevocable(new SimpleRspBundle (params)).flip
   val deqreq = Irrevocable(new SimpleDeqReqBundle (params))
   val deqrsp = Irrevocable(new SimpleDeqRspBundle (params)).flip
 }

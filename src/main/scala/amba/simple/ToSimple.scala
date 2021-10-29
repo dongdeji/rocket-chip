@@ -136,7 +136,7 @@ class TLToSimple(val combinational: Boolean = true, val adapterName: Option[Stri
 
       // We need these Queues because Simple queues are irrevocable
       val depth = if (combinational) 1 else 2
-      val out_arw = Wire(Decoupled(new SimpleEnqReqBundle(out.params)))
+      val out_arw = Wire(Decoupled(new SimpleReqBundle(out.params)))
       //by dongdeji val out_w = Wire(out.w)
       //by dongdeji out.w :<> Queue.irrevocable(out_w, entries=depth, flow=combinational)
       val queue_arw = Queue.irrevocable(out_arw, entries=depth, flow=combinational)
