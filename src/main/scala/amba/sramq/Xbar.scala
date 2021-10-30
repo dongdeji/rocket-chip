@@ -56,8 +56,8 @@ class SramQXbar(
     // To route W we need to record where the AWs went
     val awIn  = Seq.fill(io_in.size) { Module(new Queue(UInt(width = io_out.size), awQueueDepth, flow = true)) }
     val awOut = Seq.fill(io_out.size) { Module(new Queue(UInt(width = io_in.size), awQueueDepth, flow = true)) }
-    val requestAWIO = io_in.map  { i => Vec(outputPorts.map { o => o(i.enqreq.bits.addr) }) }
-    val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.enqrsp.bits.id) } }
+    val requestAWIO = io_in.map  { i => Vec(outputPorts.map { o => o(i.wirte_req.bits.addr) }) }
+    val requestBOI  = io_out.map { o => inputIdRanges.map { i => i.contains(o.wirte_rsp.bits.id) } }
 
     // W follows the path dictated by the AW Q
     for (i <- 0 until io_in.size) { awIn(i).io.enq.bits := requestAWIO(i).asUInt }
@@ -74,16 +74,16 @@ class SramQXbar(
       def trim(id: UInt, size: Int) = if (size <= 1) UInt(0) else id(log2Ceil(size)-1, 0)
       // Manipulate the AXI IDs to differentiate masters
       val r = inputIdRanges(i)
-      in(i).enqreq.bits.id := io_in(i).enqreq.bits.id | UInt(r.start)
-      io_in(i).enqrsp.bits.id := trim(in(i).enqrsp.bits.id, r.size)
+      in(i).wirte_req.bits.id := io_in(i).wirte_req.bits.id | UInt(r.start)
+      io_in(i).wirte_rsp.bits.id := trim(in(i).wirte_rsp.bits.id, r.size)
 
       if (io_out.size > 1) {
         // Block A[RW] if we switch ports, to ensure responses stay ordered (also: beware the dining philosophers)
         val endId = edgesIn(i).master.endId
         val arFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
         val awFIFOMap = Wire(init = Vec.fill(endId) { Bool(true) })
-        val awSel = UIntToOH(io_in(i).enqreq.bits.id, endId)
-        val bSel  = UIntToOH(io_in(i).enqrsp .bits.id, endId)
+        val awSel = UIntToOH(io_in(i).wirte_req.bits.id, endId)
+        val bSel  = UIntToOH(io_in(i).wirte_rsp .bits.id, endId)
         val awTag = OHToUInt(requestAWIO(i).asUInt, io_out.size)
 
         for (master <- edgesIn(i).master.masters) {
@@ -109,8 +109,8 @@ class SramQXbar(
           for (id <- master.id.start until master.id.end) {
             awFIFOMap(id) := idTracker(
               awTag,
-              awSel(id) && io_in(i).enqreq.fire(),
-              bSel(id) && io_in(i).enqrsp.fire())
+              awSel(id) && io_in(i).wirte_req.fire(),
+              bSel(id) && io_in(i).wirte_rsp.fire())
           }
         }
 
@@ -118,13 +118,13 @@ class SramQXbar(
         // To not cause a loop, we cannot have: wvalid := awready
 
         // Block AW if we cannot record the W destination
-        val allowAW = awFIFOMap(io_in(i).enqreq.bits.id)
+        val allowAW = awFIFOMap(io_in(i).wirte_req.bits.id)
         val latched = RegInit(Bool(false)) // cut awIn(i).enq.valid from awready
-        in(i).enqreq.valid := io_in(i).enqreq.valid && (latched || awIn(i).io.enq.ready) && allowAW
-        io_in(i).enqreq.ready := in(i).enqreq.ready && (latched || awIn(i).io.enq.ready) && allowAW
-        awIn(i).io.enq.valid := io_in(i).enqreq.valid && !latched
+        in(i).wirte_req.valid := io_in(i).wirte_req.valid && (latched || awIn(i).io.enq.ready) && allowAW
+        io_in(i).wirte_req.ready := in(i).wirte_req.ready && (latched || awIn(i).io.enq.ready) && allowAW
+        awIn(i).io.enq.valid := io_in(i).wirte_req.valid && !latched
         when (awIn(i).io.enq.fire()) { latched := Bool(true) }
-        when (in(i).enqreq.fire()) { latched := Bool(false) }
+        when (in(i).wirte_req.fire()) { latched := Bool(false) }
       }
     }
 
@@ -136,27 +136,27 @@ class SramQXbar(
       if (io_in.size > 1) {
         // Block AW if we cannot record the W source
         val latched = RegInit(Bool(false)) // cut awOut(i).enq.valid from awready
-        io_out(i).enqreq.valid := out(i).enqreq.valid && (latched || awOut(i).io.enq.ready)
-        out(i).enqreq.ready := io_out(i).enqreq.ready && (latched || awOut(i).io.enq.ready)
-        awOut(i).io.enq.valid := out(i).enqreq.valid && !latched
+        io_out(i).wirte_req.valid := out(i).wirte_req.valid && (latched || awOut(i).io.enq.ready)
+        out(i).wirte_req.ready := io_out(i).wirte_req.ready && (latched || awOut(i).io.enq.ready)
+        awOut(i).io.enq.valid := out(i).wirte_req.valid && !latched
         when (awOut(i).io.enq.fire()) { latched := Bool(true) }
-        when (out(i).enqreq.fire()) { latched := Bool(false) }
+        when (out(i).wirte_req.fire()) { latched := Bool(false) }
       }
     }
 
     // Fanout the input sources to the output sinks
     def transpose[T](x: Seq[Seq[T]]) = Seq.tabulate(x(0).size) { i => Seq.tabulate(x.size) { j => x(j)(i) } }
-    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => SramQXbar.fanout(i.enqreq, r) })
-    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => SramQXbar.fanout(o.enqrsp,  r) })
+    val portsAWOI = transpose((in  zip requestAWIO) map { case (i, r) => SramQXbar.fanout(i.wirte_req, r) })
+    val portsBIO  = transpose((out zip requestBOI)  map { case (o, r) => SramQXbar.fanout(o.wirte_rsp,  r) })
 
     // Arbitrate amongst the sources
     for (o <- 0 until out.size) {
       awOut(o).io.enq.bits := // Record who won AW arbitration to select W
-        SramQArbiter.returnWinner(arbitrationPolicy)(out(o).enqreq, portsAWOI(o):_*).asUInt
+        SramQArbiter.returnWinner(arbitrationPolicy)(out(o).wirte_req, portsAWOI(o):_*).asUInt
     }
 
     for (i <- 0 until in.size) {
-      SramQArbiter(arbitrationPolicy)(in(i).enqrsp, portsBIO(i):_*)
+      SramQArbiter(arbitrationPolicy)(in(i).wirte_rsp, portsBIO(i):_*)
     }
   }
 }
@@ -256,16 +256,12 @@ class SramQXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(im
 
   val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new SramQRAM(AddressSet(slaveSize * i, slaveSize-1))) }
   slaves.foreach { s => (s.node
-    //:= SramQFragmenter()
     := SramQBuffer(BufferParams.flow)
     := SramQBuffer(BufferParams.flow)
-    //:= SramQDelayer(0.25)
     := xbar) }
 
   val masters = Seq.fill(nMasters) { LazyModule(new TLFuzzer(txns, 4, nOrdered = Some(1))) }
   masters.zipWithIndex.foreach { case (m, i) => (xbar
-    //:= SramQDelayer(0.25)
-    //:= SramQDeinterleaver(4096)
     := TLToSramQ()
     := TLFilter(filter(i))
     := TLRAMModel(s"${name} Master $i")

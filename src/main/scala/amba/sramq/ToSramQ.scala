@@ -97,7 +97,7 @@ class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[Strin
       // Construct the source=>ID mapping table
       val map = new TLtoSramQIdMap(edgeIn.client)
       val sourceStall = Wire(Vec(edgeIn.client.endSourceId, Bool()))
-      val sourceTable = Wire(Vec(edgeIn.client.endSourceId, out.enqreq.bits.id))
+      val sourceTable = Wire(Vec(edgeIn.client.endSourceId, out.wirte_req.bits.id))
       val idStall = Wire(init = Vec.fill(edgeOut.master.endId) { Bool(false) })
       var idCount = Array.fill(edgeOut.master.endId) { None:Option[Int] }
 
@@ -130,24 +130,24 @@ class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[Strin
       //by dongdeji val r_source  = r_state.source
       //by dongdeji val r_size    = r_state.size
 
-      //by dongdeji val b_state = out.enqrsp.bits.echo(SramQTLState)
+      //by dongdeji val b_state = out.wirte_rsp.bits.echo(SramQTLState)
       //by dongdeji val b_source  = b_state.source
       //by dongdeji val b_size    = b_state.size
 
       // We need these Queues because SramQ queues are irrevocable
       val depth = if (combinational) 1 else 2
-      val out_arw = Wire(Decoupled(new SramQEnqReqBundle(out.params)))
+      val out_arw = Wire(Decoupled(new SramQWriteReqBundle(out.params)))
       //by dongdeji val out_w = Wire(out.w)
       //by dongdeji out.w :<> Queue.irrevocable(out_w, entries=depth, flow=combinational)
       val queue_arw = Queue.irrevocable(out_arw, entries=depth, flow=combinational)
 
       // Fan out the ARW channel to AR and AW
       //by dongdeji out.ar.bits := queue_arw.bits
-      out.enqreq.bits := queue_arw.bits
+      out.wirte_req.bits := queue_arw.bits
       //by dongdeji out.ar.valid := queue_arw.valid && !queue_arw.bits.wen
-      out.enqreq.valid := queue_arw.valid //by dongdeji &&  queue_arw.bits.wen
+      out.wirte_req.valid := queue_arw.valid //by dongdeji &&  queue_arw.bits.wen
       //by dongdeji queue_arw.ready := Mux(queue_arw.bits.wen, out.aw.ready, out.ar.ready)
-      queue_arw.ready := out.enqreq.ready
+      queue_arw.ready := out.wirte_req.ready
 
       val beatBytes = edgeIn.manager.beatBytes
       val maxSize   = UInt(log2Ceil(beatBytes))
@@ -200,7 +200,7 @@ class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[Strin
       //by dongdeji when (out.r.fire()) { r_holds_d := !out.r.bits.last }
       // Give R higher priority than B, unless B has been delayed for 8 cycles
       val b_delay = Reg(UInt(width=3))
-      when (out.enqrsp.valid && !out.enqrsp.ready) {
+      when (out.wirte_rsp.valid && !out.wirte_rsp.ready) {
         b_delay := b_delay + UInt(1)
       } .otherwise {
         b_delay := UInt(0)
@@ -208,8 +208,8 @@ class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[Strin
       //by dongdeji val r_wins = (out.r.valid && b_delay =/= UInt(7)) || r_holds_d
 
       //by dongdeji out.r.ready := in.d.ready && r_wins
-      out.enqrsp.ready := in.d.ready //by dongdeji && !r_wins
-      //by dongdeji in.d.valid := Mux(r_wins, out.r.valid, out.enqrsp.valid)
+      out.wirte_rsp.ready := in.d.ready //by dongdeji && !r_wins
+      //by dongdeji in.d.valid := Mux(r_wins, out.r.valid, out.wirte_rsp.valid)
 
       // If the first beat of the AXI RRESP is RESP_DECERR, treat this as a denied
       // request. We must pulse extend this value as AXI is allowed to change the
@@ -218,23 +218,23 @@ class TLToSramQ(val combinational: Boolean = true, val adapterName: Option[Strin
       //by dongdeji when (out.r.fire()) { r_first := out.r.bits.last }
       //by dongdeji val r_denied  = out.r.bits.resp === SramQParameters.RESP_DECERR holdUnless r_first
       //by dongdeji val r_corrupt = out.r.bits.resp =/= SramQParameters.RESP_OKAY
-      //by dongdeji val b_denied  = out.enqrsp.bits.resp =/= SramQParameters.RESP_OKAY
+      //by dongdeji val b_denied  = out.wirte_rsp.bits.resp =/= SramQParameters.RESP_OKAY
 
       //by dongdeji val r_d = edgeIn.AccessAck(r_source, r_size, UInt(0), denied = r_denied, corrupt = r_corrupt || r_denied)
       //by dongdeji val b_d = edgeIn.AccessAck(b_source, b_size, denied = b_denied)
       //by dongdeji r_d.user :<= out.r.bits.user
       //by dongdeji r_d.echo :<= out.r.bits.echo
-      //by dongdeji b_d.user :<= out.enqrsp.bits.user
-      //by dongdeji b_d.echo :<= out.enqrsp.bits.echo
+      //by dongdeji b_d.user :<= out.wirte_rsp.bits.user
+      //by dongdeji b_d.echo :<= out.wirte_rsp.bits.echo
 
       //by dongdeji in.d.bits := Mux(r_wins, r_d, b_d)
       //by dongdeji in.d.bits := b_d
-      in.d.bits.data := out.enqrsp.bits.data // avoid a costly Mux
+      in.d.bits.data := out.wirte_rsp.bits.data // avoid a costly Mux
 
       // We need to track if any reads or writes are inflight for a given ID.
       // If the opposite type arrives, we must stall until it completes.
       val a_sel = UIntToOH(arw.id, edgeOut.master.endId).asBools
-      val d_sel = UIntToOH(out.enqrsp.bits.id, edgeOut.master.endId).asBools
+      val d_sel = UIntToOH(out.wirte_rsp.bits.id, edgeOut.master.endId).asBools
       val d_last = Bool(true)
       // If FIFO was requested, ensure that R+W ordering is preserved
       (a_sel zip d_sel zip idStall zip idCount) foreach { case (((as, ds), s), n) =>

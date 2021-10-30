@@ -41,37 +41,36 @@ class SramQRAM(
     val eccCode = None
     val address = outer.address
 
-    //val w_addr = Cat((mask zip (in.enqreq.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
-    //val deq_sel = address.contains(in.deqreq.bits.addr)
+    //val w_addr = Cat((mask zip (in.wirte_req.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
+    //val read_sel = address.contains(in.read_req.bits.addr)
 
     val head = RegInit(0.U(log2Up(SramQParameters.queue_depth*2).W))
     val tail = RegInit(0.U(log2Up(SramQParameters.queue_depth*2).W))
     /**** handle enq begin ****/
     def isFull = (tail(log2Up(SramQParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(SramQParameters.queue_depth)-1,0))
-    val enq_sel = address.contains(in.enqreq.bits.addr)
-    val enqrsped = RegInit(true.B)
-    val enqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.enqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
+    val wirte_sel = address.contains(in.wirte_req.bits.addr)
+    val wirte_rsped = RegInit(true.B)
+    val wirte_reqs1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.wirte_req.bits.cloneType)));chisel3.dontTouch(wirte_reqs1)
       
-    in.enqrsp.valid := enqreq_s1.valid
-    in.enqrsp.bits.id := enqreq_s1.bits.id
-    in.enqrsp.bits.addr := enqreq_s1.bits.addr
-    in.enqrsp.bits.data := 100.U//mem.readAndHold(tail, true.B)
-    when(in.enqrsp.fire()) {
-      enqrsped := true.B
-      enqreq_s1.valid := false.B
+    in.wirte_rsp.valid := wirte_reqs1.valid
+    in.wirte_rsp.bits.id := wirte_reqs1.bits.id
+    in.wirte_rsp.bits.addr := wirte_reqs1.bits.addr
+    in.wirte_rsp.bits.data := 100.U//mem.readAndHold(tail, true.B)
+    when(in.wirte_rsp.fire()) {
+      wirte_rsped := true.B
+      wirte_reqs1.valid := false.B
     }
 
-    when(!isFull && in.enqreq.valid && enq_sel && enqrsped ) {
-      enqrsped := false.B
-      enqreq_s1.valid := in.enqreq.valid
-      enqreq_s1.bits := in.enqreq.bits
+    when(!isFull && in.wirte_req.valid && wirte_sel && wirte_rsped ) {
+      wirte_rsped := false.B
+      wirte_reqs1.valid := in.wirte_req.valid
+      wirte_reqs1.bits := in.wirte_req.bits
     }
 
-    in.enqreq.ready := !isFull && enqrsped
+    in.wirte_req.ready := !isFull && wirte_rsped
 
-    val wdata = Vec.tabulate(beatBytes) { i => in.enqreq.bits.data(8*(i+1)-1, 8*i) }
-    when (in.enqreq.fire() && enq_sel && !isFull && 
-            in.enqreq.bits.opcode === SramQParameters.OPCODE_ENQ) {
+    val wdata = Vec.tabulate(beatBytes) { i => in.wirte_req.bits.data(8*(i+1)-1, 8*i) }
+    when (in.wirte_req.fire() && wirte_sel && !isFull) {
       mem.write(head, wdata, Fill(beatBytes, true.B).asBools)
       head := head + 1.U
     }
@@ -79,31 +78,28 @@ class SramQRAM(
 
     /**** handle deq begin ****/
     def isEmpty = (tail(log2Up(SramQParameters.queue_depth)-1,0) === head(log2Up(SramQParameters.queue_depth)-1,0))
-    val deq_sel = address.contains(in.deqreq.bits.addr)
-    val deqrsped = RegInit(true.B)
-    val deqreq_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.deqreq.bits.cloneType)));chisel3.dontTouch(enqreq_s1)
-    
-    in.deqrsp.valid := enqreq_s1.valid
-    in.deqrsp.bits.id := enqreq_s1.bits.id
-    in.deqrsp.bits.addr := enqreq_s1.bits.addr
-    in.deqrsp.bits.data := Cat(mem.readAndHold(tail, true.B).reverse)
-    when(in.deqrsp.fire()) {
-      enqrsped := true.B
-      enqreq_s1.valid := false.B
+    val read_sel = address.contains(in.read_req.bits.addr)
+    val read_rsped = RegInit(true.B)
+    val read_reqs1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.read_req.bits.cloneType)));chisel3.dontTouch(wirte_reqs1)
+
+    in.read_rsp.valid := read_reqs1.valid
+    in.read_rsp.bits.id := read_reqs1.bits.id
+    in.read_rsp.bits.addr := read_reqs1.bits.addr
+    in.read_rsp.bits.data := Cat(mem.readAndHold(tail, true.B).reverse)
+    when(in.read_rsp.fire()) {
+      read_rsped := true.B
+      read_reqs1.valid := false.B
     }
 
-    when(!isFull && in.deqreq.valid && deq_sel && deqrsped ) {
-      deqrsped := false.B
-      deqreq_s1.valid := in.deqreq.valid
-      deqreq_s1.bits := in.deqreq.bits
-    }
-
-    in.deqreq.ready := !isEmpty && deqrsped
-
-    when (in.deqreq.fire() && deq_sel && !isEmpty && 
-            in.deqreq.bits.opcode === SramQParameters.OPCODE_DEQ) {
+    when(!isEmpty && in.read_req.fire() && read_sel && read_rsped ) {
+      read_rsped := false.B
+      read_reqs1.valid := true.B
+      read_reqs1.bits := in.read_req.bits
       tail := tail + 1.U
     }
+
+    in.read_req.ready := !isEmpty && read_rsped
+
     /**** handle deq end ****/
   }
 }
