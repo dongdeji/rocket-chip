@@ -13,16 +13,26 @@ import freechips.rocketchip.amba._
 // Setting wcorrupt=true is not enough to enable the w.user field
 // You must also list AMBACorrupt in your master's requestFields
 class SimpleRAM(
-    address: AddressSet,
+    enqaddress: AddressSet,
+    deqaddress: AddressSet,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
     beatBytes: Int = 8,
     devName: Option[String] = None,
     wcorrupt: Boolean = true)
-  (implicit p: Parameters) extends DiplomaticSRAM(address, beatBytes, devName)
+  (implicit p: Parameters) extends DiplomaticSRAM(enqaddress, beatBytes, devName)
 {
-  val node = SimpleSlaveNode(Seq(SimpleSlavePortParameters(
+  val enqnode = SimpleSlaveNode(Seq(SimpleSlavePortParameters(
     Seq(SimpleSlaveParameters(
-      address       = List(address),
+      address       = List(enqaddress),
+      resources     = resources,
+      supportsRead  = TransferSizes(1, beatBytes),
+      supportsWrite = TransferSizes(1, beatBytes))),
+    beatBytes  = beatBytes,
+    minLatency = 1)))
+
+  val deqnode = SimpleSlaveNode(Seq(SimpleSlavePortParameters(
+    Seq(SimpleSlaveParameters(
+      address       = List(deqaddress),
       resources     = resources,
       supportsRead  = TransferSizes(1, beatBytes),
       supportsWrite = TransferSizes(1, beatBytes))),
@@ -32,7 +42,8 @@ class SimpleRAM(
   private val outer = this
 
   lazy val module = new LazyModuleImp(this) with HasJustOneSeqMem {
-    val (in, edgeIn) = node.in(0)
+    val (enqin, enqedgeIn) = enqnode.in(0)
+    val (deqin, deqedgeIn) = deqnode.in(0)
     val laneDataBits = 8
     val (mem, omSRAM, omMem) = makeSinglePortedByteWriteSeqMem(
                                   size = BigInt(SimpleParameters.queue_depth),
@@ -41,48 +52,78 @@ class SimpleRAM(
     val eccCode = None
     val address = outer.address
 
-    //val w_addr = Cat((mask zip (in.req.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
-    //val deq_sel = address.contains(in.deqreq.bits.addr)
+    //val w_addr = Cat((mask zip (enqin.req.bits.addr >> log2Ceil(beatBytes)).asBools).filter(_._1).map(_._2).reverse)
+    //val deq_sel = address.contains(enqin.deqreq.bits.addr)
 
     val head = RegInit(0.U(log2Up(SimpleParameters.queue_depth*2).W))
     val tail = RegInit(0.U(log2Up(SimpleParameters.queue_depth*2).W))
+
     /**** handle enq begin ****/
     def isFull = (tail(log2Up(SimpleParameters.queue_depth)-1,0) === (head + 1.U)(log2Up(SimpleParameters.queue_depth)-1,0))
-    val enq_sel = address.contains(in.req.bits.addr)
-    val rsped = RegInit(true.B)
-    val req_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(in.req.bits.cloneType)));chisel3.dontTouch(req_s1)
+    val enq_sel = address.contains(enqin.req.bits.addr)
+    val enq_rsped = RegInit(true.B)
+    val enq_req_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(enqin.req.bits.cloneType)));chisel3.dontTouch(enq_req_s1)
       
-    in.rsp.valid := req_s1.valid
-    in.rsp.bits.id := req_s1.bits.id
-    in.rsp.bits.addr := req_s1.bits.addr
-    in.rsp.bits.data := 100.U//mem.readAndHold(tail, true.B)
-    when(in.rsp.fire()) {
-      rsped := true.B
-      req_s1.valid := false.B
+    enqin.rsp.valid := enq_req_s1.valid
+    enqin.rsp.bits.id := enq_req_s1.bits.id
+    enqin.rsp.bits.addr := enq_req_s1.bits.addr
+    enqin.rsp.bits.data := 100.U//mem.readAndHold(tail, true.B)
+    when(enqin.rsp.fire()) {
+      enq_rsped := true.B
+      enq_req_s1.valid := false.B
     }
 
-    when(!isFull && in.req.valid && enq_sel && rsped ) {
-      rsped := false.B
-      req_s1.valid := in.req.valid
-      req_s1.bits := in.req.bits
+    when(!isFull && enqin.req.valid && enq_sel && enq_rsped ) {
+      enq_rsped := false.B
+      enq_req_s1.valid := enqin.req.valid
+      enq_req_s1.bits := enqin.req.bits
     }
 
-    in.req.ready := !isFull && rsped
+    enqin.req.ready := !isFull && enq_rsped
 
-    val wdata = Vec.tabulate(beatBytes) { i => in.req.bits.data(8*(i+1)-1, 8*i) }
-    when (in.req.fire() && enq_sel && !isFull && 
-            in.req.bits.opcode === SimpleParameters.OPCODE_ENQ) {
+    val wdata = Vec.tabulate(beatBytes) { i => enqin.req.bits.data(8*(i+1)-1, 8*i) }
+    when (enqin.req.fire() && enq_sel && !isFull && 
+            enqin.req.bits.opcode === SimpleParameters.OPCODE_ENQ) {
       mem.write(head, wdata, Fill(beatBytes, true.B).asBools)
       head := head + 1.U
     }
     /**** handle enq end ****/
+
+    /**** handle deq begin ****/
+    def isEmpty = (tail(log2Up(SimpleParameters.queue_depth)-1,0) === head(log2Up(SimpleParameters.queue_depth)-1,0))
+    val deq_sel = address.contains(deqin.req.bits.addr)
+    val deq_rsped = RegInit(true.B)
+    val deq_req_s1 = RegInit(0.U.asTypeOf(chisel3.util.Valid(deqin.req.bits.cloneType)));chisel3.dontTouch(deq_req_s1)
+      
+    deqin.rsp.valid := deq_req_s1.valid
+    deqin.rsp.bits.id := deq_req_s1.bits.id
+    deqin.rsp.bits.addr := deq_req_s1.bits.addr
+    deqin.rsp.bits.data := Cat(mem.readAndHold(tail, true.B).reverse)
+    when(deqin.rsp.fire()) {
+      deq_rsped := true.B
+      deq_req_s1.valid := false.B
+    }
+
+    when(!isEmpty && deqin.req.valid && deq_sel && deq_rsped ) {
+      deq_rsped := false.B
+      deq_req_s1.valid := deqin.req.valid
+      deq_req_s1.bits := deqin.req.bits
+      tail := tail + 1.U
+    }
+
+    deqin.req.ready := !isEmpty && deq_rsped
+
+    /**** handle deq end ****/
+
+
   }
 }
 
 object SimpleRAM
 {
   def apply(
-    address: AddressSet,
+    enqaddress: AddressSet,
+    deqaddress: AddressSet,
     parentLogicalTreeNode: Option[LogicalTreeNode] = None,
     beatBytes: Int = 4,
     devName: Option[String] = None,
@@ -90,10 +131,11 @@ object SimpleRAM
   (implicit p: Parameters) =
   {
     val sramqram = LazyModule(new SimpleRAM(
-      address = address,
+      enqaddress = enqaddress,
+      deqaddress = deqaddress,
       beatBytes = beatBytes,
       devName = devName,
       wcorrupt = wcorrupt))
-    sramqram.node
+    (sramqram.enqnode, sramqram.deqnode)
   }
 }

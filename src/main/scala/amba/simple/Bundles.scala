@@ -24,21 +24,6 @@ class SimpleRspBundle(params: SimpleBundleParameters) extends SimpleBundleBase(p
   val data = UInt(width = params.dataBits)
 }
 
-class SimpleDeqReqBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
-{
-  val id = UInt(width = params.idBits)
-  val addr = UInt(width = params.addrBits)
-  val opcode = UInt(width = params.opcodeBits) // added by dongdeji  
-  val data = UInt(width = params.dataBits) // added by dongdeji
-}
-
-class SimpleDeqRspBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
-{
-  val id = UInt(width = params.idBits)
-  val addr = UInt(width = params.addrBits)
-  val data = UInt(width = params.dataBits)
-}
-
 class SimpleBundle(params: SimpleBundleParameters) extends SimpleBundleBase(params)
 {
   val req = Irrevocable(new SimpleReqBundle (params))

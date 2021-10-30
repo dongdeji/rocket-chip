@@ -254,13 +254,17 @@ class SimpleXbarFuzzTest(name: String, txns: Int, nMasters: Int, nSlaves: Int)(i
   val masterBandSize = slaveSize >> log2Ceil(nMasters)
   def filter(i: Int) = TLFilter.mSelectIntersect(AddressSet(i * masterBandSize, ~BigInt(slaveSize - masterBandSize)))
 
-  val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new SimpleRAM(AddressSet(slaveSize * i, slaveSize-1))) }
-  slaves.foreach { s => (s.node
-    //:= SimpleFragmenter()
-    := SimpleBuffer(BufferParams.flow)
-    := SimpleBuffer(BufferParams.flow)
-    //:= SimpleDelayer(0.25)
-    := xbar) }
+  val slaves = Seq.tabulate(nSlaves) { i => LazyModule(new SimpleRAM(AddressSet(slaveSize*(2*i+0), slaveSize-1), AddressSet(slaveSize*(2*i+1), slaveSize-1))) }
+  slaves.foreach { s => 
+    (s.enqnode
+      := SimpleBuffer(BufferParams.flow)
+      := SimpleBuffer(BufferParams.flow)
+      := xbar) 
+    (s.deqnode
+      := SimpleBuffer(BufferParams.flow)
+      := SimpleBuffer(BufferParams.flow)
+      := xbar) 
+  }
 
   val masters = Seq.fill(nMasters) { LazyModule(new TLFuzzer(txns, 4, nOrdered = Some(1))) }
   masters.zipWithIndex.foreach { case (m, i) => (xbar
