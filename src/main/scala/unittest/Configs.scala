@@ -91,12 +91,12 @@ class WithTLXbarUnitTests extends Config((site, here, up) => {
     val txns = 100 * site(TestDurationMultiplier)
     val timeout = 50000 * site(TestDurationMultiplier)
     Seq(
-      Module(new TLJbarTest(3, 2,           txns=5*txns, timeout=timeout)),
+      //Module(new TLJbarTest(3, 2,           txns=5*txns, timeout=timeout)),
       Module(new TLRAMXbarTest(1,           txns=5*txns, timeout=timeout)),
-      Module(new TLRAMXbarTest(2,           txns=5*txns, timeout=timeout)),
-      Module(new TLRAMXbarTest(8,           txns=5*txns, timeout=timeout)),
-      Module(new TLMulticlientXbarTest(4,4, txns=2*txns, timeout=timeout)),
-      Module(new TLMasterMuxTest(           txns=5*txns, timeout=timeout)) ) }
+      //Module(new TLRAMXbarTest(2,           txns=5*txns, timeout=timeout)),
+      //Module(new TLRAMXbarTest(8,           txns=5*txns, timeout=timeout)),
+      //Module(new TLMulticlientXbarTest(4,4, txns=2*txns, timeout=timeout)),
+      /*Module(new TLMasterMuxTest(           txns=5*txns, timeout=timeout)) */) }
 })
 
 class WithECCTests extends Config((site, here, up) => {

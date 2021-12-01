@@ -435,7 +435,13 @@ object TLXbar_ACancel
 /** Synthesizeable unit tests */
 import freechips.rocketchip.unittest._
 
-class TLRAMXbar(nManagers: Int, txns: Int)(implicit p: Parameters) extends LazyModule {
+class TLRAMXbar(nManagers: Int, txns: Int)(implicit p: Parameters) extends LazyModule with BindingScope {
+
+  lazy val json = JSON(bindingTree)
+  ElaborationArtefacts.add(s"TLRAMXbarNew.graphml", graphML)
+  //ElaborationArtefacts.add(s"TLRAMXbarNew.dts", outer.dts)
+  ElaborationArtefacts.add(s"TLRAMXbarNew.json", json)
+
   val fuzz = LazyModule(new TLFuzzer(txns))
   val model = LazyModule(new TLRAMModel("Xbar"))
   val xbar = LazyModule(new TLXbar)
@@ -451,8 +457,33 @@ class TLRAMXbar(nManagers: Int, txns: Int)(implicit p: Parameters) extends LazyM
   }
 }
 
+class TLRAMXbarNew(nManagers: Int, txns: Int)(implicit p: Parameters) extends LazyModule with BindingScope {
+
+  lazy val json = JSON(bindingTree)
+  ElaborationArtefacts.add(s"TLRAMXbarNew.graphml", graphML)
+  //ElaborationArtefacts.add(s"TLRAMXbarNew.dts", outer.dts)
+  ElaborationArtefacts.add(s"TLRAMXbarNew.json", json)
+
+  val fuzz = LazyModule(new TLFuzzerNew(txns))
+  val model = LazyModule(new TLRAMModel("Xbar"))
+  val xbar = LazyModule(new TLXbar)
+  val ram  = LazyModule(new TLRAMNew(AddressSet(0x0+0x400*1, 0x3ff)))
+
+  xbar.node := TLDelayer(0.1) := model.node := fuzz.node
+  ram.node := TLFragmenter(4, 256) := TLDelayer(0.1) := xbar.node
+
+
+  lazy val module = new LazyModuleImp(this) with UnitTestModule {
+    io.finished := fuzz.module.io.finished
+    ram.module.io.finished := fuzz.module.io.finished
+    ram.module.io.num_reqs := fuzz.module.io.num_reqs
+  }
+}
+
+
 class TLRAMXbarTest(nManagers: Int, txns: Int = 5000, timeout: Int = 500000)(implicit p: Parameters) extends UnitTest(timeout) {
-  val dut = Module(LazyModule(new TLRAMXbar(nManagers,txns)).module)
+  //val dut = Module(LazyModule(new TLRAMXbar(nManagers,txns)).module)
+  val dut = Module(LazyModule(new TLRAMXbarNew(nManagers,txns)).module)
   dut.io.start := io.start
   io.finished := dut.io.finished
 }
